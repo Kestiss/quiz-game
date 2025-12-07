@@ -793,6 +793,8 @@ button:not(:disabled):hover {
   color: #f0f4ff;
   overflow: hidden;
   font-family: var(--font-geist-sans, system-ui, sans-serif);
+  /* Ensure footer always visible */
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .tv-stage.theme-neon {
@@ -941,12 +943,13 @@ button:not(:disabled):hover {
 
 /* Main content area */
 .tv-main {
-  flex: 1;
+  flex: 1 1 0;
   display: grid;
   grid-template-columns: 1fr 120px;
   gap: 0.2rem;
   padding: 0.15rem 0.3rem;
   min-height: 0;
+  max-height: calc(100vh - 120px);
   overflow: hidden;
 }
 
@@ -1056,10 +1059,10 @@ button:not(:disabled):hover {
 
 /* Footer persona - prominent */
 .tv-footer {
-  padding: 0.6rem 1.5rem;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.9));
+  padding: 0.5rem 1.5rem;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.95));
   border-top: 2px solid rgba(255, 255, 255, 0.3);
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .tv-persona {
@@ -1089,9 +1092,9 @@ button:not(:disabled):hover {
 }
 
 .tv-persona-line {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   color: white;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
 /* Phase styles */
