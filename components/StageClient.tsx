@@ -204,6 +204,13 @@ export function StageClient({ code }: StageClientProps) {
         </div>
       </header>
 
+      {/* Host persona bar - after top bar */}
+      <div className="tv-host-bar">
+        <span className="tv-persona-avatar">{personaMeta.avatar}</span>
+        <span className="tv-persona-name">{personaMeta.name}</span>
+        <span className="tv-persona-line">{personaLine}</span>
+      </div>
+
       {/* Timer bar */}
       {currentRound?.deadline && (room?.phase === "prompt" || room?.phase === "vote") && (
         <div className={`tv-timer-bar ${isUrgent ? "urgent" : ""}`}>
@@ -258,17 +265,6 @@ export function StageClient({ code }: StageClientProps) {
           </div>
         </aside>
       </main>
-
-      {/* Host persona footer */}
-      <footer className="tv-footer">
-        <div className="tv-persona">
-          <span className="tv-persona-avatar">{personaMeta.avatar}</span>
-          <div className="tv-persona-content">
-            <span className="tv-persona-name">{personaMeta.name}</span>
-            <span className="tv-persona-line">{personaLine}</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
