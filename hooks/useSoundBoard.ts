@@ -12,6 +12,13 @@ interface SoundBoard {
   playApplause: () => void;
   playLaugh: () => void;
   playSting: () => void;
+  playDrumroll: () => void;
+  playWhoosh: () => void;
+  playPop: () => void;
+  playCheer: () => void;
+  playTick: () => void;
+  playUrgent: () => void;
+  playReveal: () => void;
 }
 
 const THEME_MASTER_GAIN = 0.2;
@@ -169,6 +176,73 @@ export function useSoundBoard(enabled: boolean): SoundBoard {
     });
   }, [schedule]);
 
+  // New sounds for enhanced experience
+  const playDrumroll = useCallback(() => {
+    schedule((ctx, start) => {
+      // Building drumroll effect with rapid noise bursts
+      for (let i = 0; i < 20; i++) {
+        const t = start + i * 0.08;
+        const gain = 0.3 + (i / 20) * 0.5;
+        noise(ctx, t, { duration: 0.06, gain });
+        tone(ctx, t, { duration: 0.05, freq: 100 + Math.random() * 50, type: "triangle", gain: 0.2 });
+      }
+      // Final hit
+      tone(ctx, start + 1.6, { duration: 0.4, freq: 80, type: "triangle", gain: 1.2 });
+      noise(ctx, start + 1.6, { duration: 0.3, gain: 0.8 });
+    });
+  }, [schedule]);
+
+  const playWhoosh = useCallback(() => {
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.3, freq: 200, type: "sine", glideTo: 800, gain: 0.4 });
+      noise(ctx, start, { duration: 0.25, gain: 0.3 });
+    });
+  }, [schedule]);
+
+  const playPop = useCallback(() => {
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.08, freq: 800, type: "sine", glideTo: 400, gain: 0.6 });
+      tone(ctx, start + 0.02, { duration: 0.1, freq: 1200, type: "triangle", gain: 0.3 });
+    });
+  }, [schedule]);
+
+  const playCheer = useCallback(() => {
+    schedule((ctx, start) => {
+      // Layered crowd noise with pitched elements
+      noise(ctx, start, { duration: 2, gain: 0.7 });
+      noise(ctx, start + 0.1, { duration: 1.8, gain: 0.5 });
+      // Add some whoops
+      tone(ctx, start + 0.2, { duration: 0.3, freq: 400, type: "sine", glideTo: 600, gain: 0.4 });
+      tone(ctx, start + 0.5, { duration: 0.3, freq: 500, type: "sine", glideTo: 700, gain: 0.3 });
+      tone(ctx, start + 0.9, { duration: 0.4, freq: 450, type: "sine", glideTo: 650, gain: 0.35 });
+    });
+  }, [schedule]);
+
+  const playTick = useCallback(() => {
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.05, freq: 1000, type: "square", gain: 0.5 });
+    });
+  }, [schedule]);
+
+  const playUrgent = useCallback(() => {
+    schedule((ctx, start) => {
+      // Urgent warning beeps
+      tone(ctx, start, { duration: 0.15, freq: 880, type: "square", gain: 0.7 });
+      tone(ctx, start + 0.2, { duration: 0.15, freq: 880, type: "square", gain: 0.7 });
+      tone(ctx, start + 0.4, { duration: 0.15, freq: 1100, type: "square", gain: 0.8 });
+    });
+  }, [schedule]);
+
+  const playReveal = useCallback(() => {
+    schedule((ctx, start) => {
+      // Dramatic reveal sound
+      tone(ctx, start, { duration: 0.2, freq: 300, type: "triangle", glideTo: 500, gain: 0.6 });
+      tone(ctx, start + 0.15, { duration: 0.3, freq: 400, type: "triangle", glideTo: 700, gain: 0.7 });
+      tone(ctx, start + 0.35, { duration: 0.4, freq: 600, type: "sine", glideTo: 900, gain: 0.8 });
+      noise(ctx, start, { duration: 0.2, gain: 0.2 });
+    });
+  }, [schedule]);
+
   return {
     playJoin,
     playSubmit,
@@ -179,5 +253,12 @@ export function useSoundBoard(enabled: boolean): SoundBoard {
     playApplause,
     playLaugh,
     playSting,
+    playDrumroll,
+    playWhoosh,
+    playPop,
+    playCheer,
+    playTick,
+    playUrgent,
+    playReveal,
   };
 }

@@ -7,6 +7,8 @@ export interface Player {
   joinedAt: number;
   lastActionAt: number;
   avatar: string;
+  streak: number;
+  achievements: AchievementType[];
 }
 
 export interface Submission {
@@ -30,6 +32,8 @@ export interface RoundState {
   votes: Vote[];
   status: "collecting" | "voting" | "closed";
   startedAt: number;
+  deadline?: number;
+  firstSubmitterId?: string;
 }
 
 export interface RoomState {
@@ -45,12 +49,32 @@ export interface RoomState {
   theme: ThemeName;
   reactions: Record<ReactionEmoji, number>;
   stageMessage?: StageMessage | null;
+  settings: GameSettings;
+  customPrompts: string[];
 }
+
+export interface GameSettings {
+  promptDuration: number; // seconds
+  voteDuration: number; // seconds
+  speedMode: boolean;
+  autoAdvance: boolean;
+  categories: PromptCategory[];
+}
+
+export type PromptCategory = "silly" | "popCulture" | "darkHumor" | "workplace" | "relationships" | "absurd";
 
 export type PublicRoomState = RoomState;
 
 export type ThemeName = "neon" | "gold" | "retro" | "spooky";
 export type ReactionEmoji = "👏" | "😂" | "🔥" | "😮";
+
+export type AchievementType =
+  | "first-answer"
+  | "crowd-favorite"
+  | "underdog"
+  | "streak-2"
+  | "streak-3"
+  | "unanimous";
 
 export interface StageMessage {
   id: string;
@@ -58,3 +82,11 @@ export interface StageMessage {
   text: string;
   expiresAt: number;
 }
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  promptDuration: 60,
+  voteDuration: 30,
+  speedMode: false,
+  autoAdvance: false,
+  categories: [],
+};

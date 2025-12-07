@@ -16,19 +16,31 @@ import type {
   ReactionEmoji,
   RoundState,
   ThemeName,
+  PromptCategory,
+  AchievementType,
 } from "@/types/game";
 import { useSoundBoard } from "@/hooks/useSoundBoard";
 import { useSpeech } from "@/hooks/useSpeech";
 import { useBackgroundMusic } from "@/hooks/useBackgroundMusic";
+import { TimerBar } from "./CountdownTimer";
+import { AchievementContainer } from "./AchievementToast";
+import { ResultsCard } from "./ResultsCard";
+import { PROMPT_CATEGORIES } from "@/lib/prompts";
 
 type Session =
   | null
   | {
-      roomCode: string;
-      playerId: string;
-      playerName: string;
-      isHost: boolean;
-    };
+    roomCode: string;
+    playerId: string;
+    playerName: string;
+    isHost: boolean;
+  };
+
+interface Achievement {
+  id: string;
+  type: AchievementType;
+  playerName: string;
+}
 
 const STORAGE_KEY = "party-quips-session";
 const SOUND_KEY = "party-quips-sound";
@@ -81,6 +93,10 @@ export function HomeClient() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [teleprompterText, setTeleprompterText] = useState("");
   const [intermissionSeconds, setIntermissionSeconds] = useState(15);
+  const [showSettings, setShowSettings] = useState(false);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [customPromptInput, setCustomPromptInput] = useState("");
+  const prevAchievementsRef = useRef<Map<string, AchievementType[]>>(new Map());
 
   const hydrateSession = useEffectEvent((value: Session | null) => {
     setSession(value);
@@ -166,12 +182,35 @@ export function HomeClient() {
   const currentRound = room?.currentRoundIndex != null &&
     room.currentRoundIndex >= 0 &&
     room.rounds[room.currentRoundIndex]
-      ? (room.rounds[room.currentRoundIndex] as RoundState)
-      : undefined;
+    ? (room.rounds[room.currentRoundIndex] as RoundState)
+    : undefined;
 
   useEffect(() => {
     resetDraft();
   }, [room?.currentRoundIndex]);
+
+  // Track achievements
+  useEffect(() => {
+    if (!room) return;
+
+    room.players.forEach((player) => {
+      const prev = prevAchievementsRef.current.get(player.id) || [];
+      const newAchievements = player.achievements.filter((a) => !prev.includes(a));
+
+      newAchievements.forEach((type) => {
+        setAchievements((a) => [
+          ...a,
+          { id: `${Date.now()}-${type}`, type, playerName: player.name },
+        ]);
+      });
+
+      prevAchievementsRef.current.set(player.id, player.achievements);
+    });
+  }, [room?.players]);
+
+  const dismissAchievement = useCallback((id: string) => {
+    setAchievements((a) => a.filter((item) => item.id !== id));
+  }, []);
 
   const answeredIds = useMemo(() => {
     if (!currentRound) return new Set<string>();
@@ -193,6 +232,13 @@ export function HomeClient() {
     playApplause,
     playLaugh,
     playSting,
+    playDrumroll,
+    playWhoosh,
+    playPop,
+    playCheer,
+    playTick,
+    playUrgent,
+    playReveal,
   } = useSoundBoard(soundEnabled);
   const { speak: speakPrompt, supported: speechSupported, cancel: cancelSpeech } =
     useSpeech(voiceEnabled);
@@ -385,6 +431,33 @@ export function HomeClient() {
     }
   };
 
+  const updateSettings = async (settings: Record<string, unknown>) => {
+    if (!session || !room) return;
+    try {
+      await postAction({
+        path: `/api/rooms/${session.roomCode}/settings`,
+        payload: { playerId: session.playerId, settings },
+        mutate,
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Unable to update settings");
+    }
+  };
+
+  const addCustomPrompt = async () => {
+    if (!session || !room || !customPromptInput.trim()) return;
+    try {
+      await postAction({
+        path: `/api/rooms/${session.roomCode}/prompts`,
+        payload: { playerId: session.playerId, prompt: customPromptInput },
+        mutate,
+      });
+      setCustomPromptInput("");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Unable to add prompt");
+    }
+  };
+
   const sendTeleprompter = async () => {
     if (!session || !room || teleprompterText.trim().length === 0) return;
     try {
@@ -455,6 +528,8 @@ export function HomeClient() {
 
   return (
     <div className={`container ${themeClass} ${phaseClass}`}>
+      <AchievementContainer achievements={achievements} onDismiss={dismissAchievement} />
+
       <header className="hero">
         <h1>Party Prompts</h1>
         <p>Fast, lightweight Quiplash-style rounds you can host on Vercel.</p>
@@ -603,6 +678,11 @@ export function HomeClient() {
 
           {room && (
             <>
+              {/* Timer bar for prompt/vote phases */}
+              {currentRound?.deadline && (room.phase === "prompt" || room.phase === "vote") && (
+                <TimerBar deadline={currentRound.deadline} warningThreshold={10} />
+              )}
+
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`phase-${room.code}-${room.phase}-${room.currentRoundIndex ?? -1}`}
@@ -645,7 +725,9 @@ export function HomeClient() {
                   playApplause={playApplause}
                   playLaugh={playLaugh}
                   playSting={playSting}
+                  playDrumroll={playDrumroll}
                   onThemeChange={updateTheme}
+                  onSettingsChange={updateSettings}
                   teleprompterText={teleprompterText}
                   setTeleprompterText={setTeleprompterText}
                   onSendTeleprompter={sendTeleprompter}
@@ -654,6 +736,11 @@ export function HomeClient() {
                   onStartIntermission={triggerIntermission}
                   musicPlaying={bgm.playing}
                   onToggleMusic={bgm.toggle}
+                  showSettings={showSettings}
+                  setShowSettings={setShowSettings}
+                  customPromptInput={customPromptInput}
+                  setCustomPromptInput={setCustomPromptInput}
+                  onAddCustomPrompt={addCustomPrompt}
                 />
               )}
             </>
@@ -759,10 +846,17 @@ function GamePhaseView({
               Voice playback is not supported in this browser.
             </p>
           )}
-          <p>
-            Answers received: {currentRound?.submissions.length ?? 0} /{" "}
-            {room.players.length}
-          </p>
+
+          {/* Typing indicator */}
+          <div className="typing-indicator">
+            <span>{currentRound?.submissions.length || 0}/{room.players.length} players answered</span>
+            <div className="typing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+
           {hasSubmitted ? (
             <p className="info">Answer locked in! Waiting on the others.</p>
           ) : (
@@ -797,6 +891,20 @@ function GamePhaseView({
       return (
         <div className="phase">
           <h2>Vote for the best reply</h2>
+
+          {/* Vote progress */}
+          <div className="vote-progress">
+            <div className="vote-progress-bar">
+              <div
+                className="vote-progress-fill"
+                style={{ width: `${((currentRound?.votes.length || 0) / Math.max(1, room.players.length - 1)) * 100}%` }}
+              />
+            </div>
+            <span className="vote-progress-text">
+              {currentRound?.votes.length || 0}/{room.players.length - 1} votes
+            </span>
+          </div>
+
           {currentRound?.submissions.length === 0 && (
             <p>No submissions yet. Host can skip ahead.</p>
           )}
@@ -804,15 +912,19 @@ function GamePhaseView({
             {currentRound?.submissions.map((submission) => {
               const isSelf = submission.playerId === session.playerId;
               return (
-                <button
+                <motion.button
                   key={submission.id}
                   onClick={() => onSubmitVote(submission.id)}
                   disabled={hasVoted || isSelf}
                   className="submission"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   <p>{submission.text}</p>
                   {isSelf && <span className="tag">Yours</span>}
-                </button>
+                </motion.button>
               );
             })}
           </div>
@@ -834,19 +946,30 @@ function GamePhaseView({
           <h2>Round results</h2>
           <p className="prompt">{currentRound?.prompt}</p>
           <div className="submission-list">
-            {currentRound?.submissions.map((submission) => {
+            {currentRound?.submissions.map((submission, index) => {
               const votes = submission.voters.length;
               const author = room.players.find(
                 (player) => player.id === submission.playerId,
               );
+              const isWinner = index === 0 || votes === Math.max(...(currentRound?.submissions.map(s => s.voters.length) || [0]));
               return (
-                <div key={submission.id} className="result">
+                <motion.div
+                  key={submission.id}
+                  className={`result ${isWinner && votes > 0 ? "winner" : ""}`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.15 }}
+                >
                   <p>{submission.text}</p>
                   <p className="muted">
+                    <span className={isWinner && votes > 0 ? "winner-avatar" : ""}>{author?.avatar}</span>{" "}
                     {author?.name ?? "Unknown"} · {votes} vote
                     {votes === 1 ? "" : "s"}
+                    {author?.streak && author.streak >= 2 && (
+                      <span className="streak-badge">🔥 {author.streak}</span>
+                    )}
                   </p>
-                </div>
+                </motion.div>
               );
             })}
           </div>
@@ -862,21 +985,13 @@ function GamePhaseView({
     case "finished":
       return (
         <div className="phase">
-          <h2>Final scoreboard</h2>
-          <ol className="winners">
-            {[...room.players]
-              .sort((a, b) => b.score - a.score)
-              .map((player) => (
-                <li key={player.id}>
-                  <span>{player.name}</span>
-                  <span>{player.score} pts</span>
-                </li>
-              ))}
-          </ol>
+          <ResultsCard room={room} />
           {session.isHost && (
-            <button onClick={onAdvance} className="secondary">
-              Reset lobby
-            </button>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem", justifyContent: "center" }}>
+              <button onClick={onAdvance} className="rematch-button">
+                🔄 Play Again
+              </button>
+            </div>
           )}
         </div>
       );
@@ -904,7 +1019,7 @@ function Scoreboard({
       <h3>Players</h3>
       <motion.ul layout>
         <AnimatePresence>
-          {players.map((player) => (
+          {players.map((player, index) => (
             <motion.li
               layout
               key={player.id}
@@ -915,9 +1030,15 @@ function Scoreboard({
             >
               <div>
                 <strong>
-                  <span aria-hidden="true">{player.avatar}</span> {player.name}
+                  <span aria-hidden="true" className={index === 0 && room.phase !== "lobby" ? "winner-avatar" : ""}>
+                    {player.avatar}
+                  </span>{" "}
+                  {player.name}
                 </strong>
                 {room.hostId === player.id && <span className="tag">Host</span>}
+                {player.streak >= 2 && (
+                  <span className="streak-badge">🔥 {player.streak}</span>
+                )}
               </div>
               <div className="status-row">
                 <span>{player.score} pts</span>
@@ -947,7 +1068,9 @@ function HostPanel({
   playApplause,
   playLaugh,
   playSting,
+  playDrumroll,
   onThemeChange,
+  onSettingsChange,
   teleprompterText,
   setTeleprompterText,
   onSendTeleprompter,
@@ -956,6 +1079,11 @@ function HostPanel({
   onStartIntermission,
   musicPlaying,
   onToggleMusic,
+  showSettings,
+  setShowSettings,
+  customPromptInput,
+  setCustomPromptInput,
+  onAddCustomPrompt,
 }: {
   room: PublicRoomState;
   stagePath: string;
@@ -967,7 +1095,9 @@ function HostPanel({
   playApplause: () => void;
   playLaugh: () => void;
   playSting: () => void;
+  playDrumroll: () => void;
   onThemeChange: (theme: ThemeName) => void;
+  onSettingsChange: (settings: Record<string, unknown>) => void;
   teleprompterText: string;
   setTeleprompterText: (value: string) => void;
   onSendTeleprompter: () => void;
@@ -976,6 +1106,11 @@ function HostPanel({
   onStartIntermission: () => void;
   musicPlaying: boolean;
   onToggleMusic: () => void;
+  showSettings: boolean;
+  setShowSettings: (value: boolean) => void;
+  customPromptInput: string;
+  setCustomPromptInput: (value: string) => void;
+  onAddCustomPrompt: () => void;
 }) {
   const [stageUrl, setStageUrl] = useState(stagePath);
   const [copied, setCopied] = useState(false);
@@ -997,6 +1132,14 @@ function HostPanel({
     } catch {
       setCopied(false);
     }
+  };
+
+  const toggleCategory = (cat: PromptCategory) => {
+    const current = room.settings?.categories || [];
+    const newCategories = current.includes(cat)
+      ? current.filter((c) => c !== cat)
+      : [...current, cat];
+    onSettingsChange({ categories: newCategories });
   };
 
   return (
@@ -1035,10 +1178,79 @@ function HostPanel({
         <button type="button" className="secondary" onClick={onToggleMusic}>
           {musicPlaying ? "Pause background music" : "Play background music"}
         </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setShowSettings(!showSettings)}
+        >
+          {showSettings ? "Hide settings" : "⚙️ Settings"}
+        </button>
       </div>
+
+      {/* Settings Panel */}
+      {showSettings && room.phase === "lobby" && (
+        <div className="settings-panel">
+          <h4>Game Settings</h4>
+          <div className="settings-row">
+            <span className="settings-label">⚡ Speed Mode (30s rounds)</span>
+            <div
+              className={`toggle-switch ${room.settings?.speedMode ? "active" : ""}`}
+              onClick={() => onSettingsChange({ speedMode: !room.settings?.speedMode })}
+            />
+          </div>
+
+          <div style={{ marginTop: "1rem" }}>
+            <p className="muted small">Prompt Categories:</p>
+            <div className="category-tags">
+              {PROMPT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`category-tag ${(room.settings?.categories || []).includes(cat) ? "active" : ""}`}
+                  onClick={() => toggleCategory(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: "1rem" }}>
+            <p className="muted small">Custom Prompts ({room.customPrompts?.length || 0}):</p>
+            {room.customPrompts && room.customPrompts.length > 0 && (
+              <ul className="custom-prompts-list">
+                {room.customPrompts.map((prompt, i) => (
+                  <li key={i} className="custom-prompt-item">
+                    {prompt.slice(0, 50)}{prompt.length > 50 ? "..." : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="host-teleprompter" style={{ marginTop: "0.5rem" }}>
+              <input
+                value={customPromptInput}
+                onChange={(e) => setCustomPromptInput(e.target.value)}
+                placeholder="Add a custom prompt..."
+              />
+              <button
+                type="button"
+                className="secondary"
+                onClick={onAddCustomPrompt}
+                disabled={!customPromptInput.trim()}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="host-actions">
         <button type="button" className="primary" onClick={onAdvance}>
           {room.phase === "vote" ? "Reveal results" : "Advance phase"}
+        </button>
+        <button type="button" className="secondary" onClick={playDrumroll}>
+          🥁 Drumroll
         </button>
         <button type="button" className="secondary" onClick={playFanfare}>
           Play fanfare

@@ -1,14 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { kv } from "@vercel/kv";
-import { pickPrompts } from "./prompts";
+import { pickPrompts, pickPromptsWithCustom, getRandomSafetyQuip } from "./prompts";
 import type {
+  AchievementType,
   GamePhase,
+  GameSettings,
   Player,
+  PromptCategory,
   ReactionEmoji,
   RoomState,
   RoundState,
   StageMessage,
   ThemeName,
+  DEFAULT_SETTINGS,
 } from "@/types/game";
 
 type GlobalRoomStore = typeof globalThis & {
@@ -27,6 +31,14 @@ const DEFAULT_REACTIONS: Record<ReactionEmoji, number> = {
   "😮": 0,
 };
 const AVATAR_CHOICES = ["🎤", "🎭", "🤖", "🦄", "🛸", "🐙", "🧠", "🔥", "🎲", "🥳"];
+
+const DEFAULT_GAME_SETTINGS: GameSettings = {
+  promptDuration: 60,
+  voteDuration: 30,
+  speedMode: false,
+  autoAdvance: false,
+  categories: [],
+};
 
 const memoryStore = getMemoryStore();
 const kvEnabled =
@@ -64,6 +76,8 @@ export async function createRoom(hostName: string, rounds?: number, avatar?: str
         joinedAt: now,
         lastActionAt: now,
         avatar: hostAvatar,
+        streak: 0,
+        achievements: [],
       },
     ],
     rounds: [],
@@ -72,6 +86,8 @@ export async function createRoom(hostName: string, rounds?: number, avatar?: str
     theme: DEFAULT_THEME,
     reactions: { ...DEFAULT_REACTIONS },
     stageMessage: null,
+    settings: { ...DEFAULT_GAME_SETTINGS },
+    customPrompts: [],
   };
 
   await saveRoom(room);
@@ -98,6 +114,8 @@ export async function joinRoom(code: string, playerName: string, avatar?: string
     joinedAt: now,
     lastActionAt: now,
     avatar: pickAvatar(avatar),
+    streak: 0,
+    achievements: [],
   };
 
   room.players.push(player);
@@ -120,8 +138,11 @@ export async function startGame(
   }
 
   const roundsToPlay = clampRounds(rounds ?? room.roundsToPlay);
-  const prompts = pickPrompts(roundsToPlay);
+  const prompts = room.customPrompts.length > 0
+    ? pickPromptsWithCustom(roundsToPlay, room.customPrompts, room.settings.categories as PromptCategory[])
+    : pickPrompts(roundsToPlay, room.settings.categories as PromptCategory[]);
   const now = Date.now();
+  const duration = room.settings.speedMode ? 30 : room.settings.promptDuration;
 
   room.rounds = prompts.map((prompt) => ({
     id: randomUUID(),
@@ -130,11 +151,20 @@ export async function startGame(
     votes: [],
     status: "collecting",
     startedAt: now,
+    deadline: now + duration * 1000,
   }));
   room.roundsToPlay = roundsToPlay;
   room.currentRoundIndex = 0;
   room.phase = "prompt";
   room.updatedAt = now;
+
+  // Reset player streaks and achievements for new game
+  room.players = room.players.map((player) => ({
+    ...player,
+    score: 0,
+    streak: 0,
+    achievements: [],
+  }));
 
   await saveRoom(room);
   return room;
@@ -159,25 +189,42 @@ export async function submitResponse(
   }
 
   const body = sanitizeResponse(text);
+  const now = Date.now();
+
+  // Check if first to submit
+  const isFirst = round.submissions.length === 0;
+  if (isFirst) {
+    round.firstSubmitterId = player.id;
+    if (!player.achievements.includes("first-answer")) {
+      player.achievements.push("first-answer");
+    }
+  }
+
   const submission = {
     id: randomUUID(),
     playerId: player.id,
     text: body,
     voters: [],
-    createdAt: Date.now(),
+    createdAt: now,
   };
 
   round.submissions.push(submission);
-  player.lastActionAt = Date.now();
-  room.updatedAt = Date.now();
+  player.lastActionAt = now;
+  room.updatedAt = now;
 
   if (round.submissions.length === room.players.length) {
-    round.status = "voting";
-    room.phase = "vote";
+    transitionToVoting(room, round);
   }
 
   await saveRoom(room);
   return room;
+}
+
+function transitionToVoting(room: RoomState, round: RoundState) {
+  round.status = "voting";
+  room.phase = "vote";
+  const voteDuration = room.settings.speedMode ? 20 : room.settings.voteDuration;
+  round.deadline = Date.now() + voteDuration * 1000;
 }
 
 export async function submitVote(
@@ -228,11 +275,28 @@ export async function advancePhase(code: string, playerId: string) {
   switch (room.phase) {
     case "prompt": {
       const round = currentRound(room);
-      if (!round || round.submissions.length < 2) {
+      if (!round) {
+        throw new RoomError("No active round", 409);
+      }
+
+      // Add safety quips for non-submitters
+      const submitterIds = new Set(round.submissions.map((s) => s.playerId));
+      room.players.forEach((player) => {
+        if (!submitterIds.has(player.id)) {
+          round.submissions.push({
+            id: randomUUID(),
+            playerId: player.id,
+            text: getRandomSafetyQuip(),
+            voters: [],
+            createdAt: Date.now(),
+          });
+        }
+      });
+
+      if (round.submissions.length < 2) {
         throw new RoomError("Need at least two answers before voting can start");
       }
-      round.status = "voting";
-      room.phase = "vote";
+      transitionToVoting(room, round);
       break;
     }
     case "vote": {
@@ -246,6 +310,8 @@ export async function advancePhase(code: string, playerId: string) {
         if (nextRound) {
           nextRound.status = "collecting";
           room.phase = "prompt";
+          const duration = room.settings.speedMode ? 30 : room.settings.promptDuration;
+          nextRound.deadline = Date.now() + duration * 1000;
         }
       } else {
         room.phase = "finished";
@@ -259,7 +325,10 @@ export async function advancePhase(code: string, playerId: string) {
       room.players = room.players.map((player) => ({
         ...player,
         score: 0,
+        streak: 0,
+        achievements: [],
       }));
+      room.reactions = { ...DEFAULT_REACTIONS };
       break;
     }
     case "lobby":
@@ -267,6 +336,63 @@ export async function advancePhase(code: string, playerId: string) {
       throw new RoomError("There is nothing to advance right now");
   }
 
+  room.updatedAt = Date.now();
+  await saveRoom(room);
+  return room;
+}
+
+export async function updateSettings(
+  code: string,
+  playerId: string,
+  settings: Partial<GameSettings>
+) {
+  const room = requireRoom(await getRoom(code), code);
+  ensureHost(room, playerId);
+
+  if (room.phase !== "lobby") {
+    throw new RoomError("Settings can only be changed in the lobby");
+  }
+
+  room.settings = { ...room.settings, ...settings };
+
+  // Speed mode overrides durations
+  if (settings.speedMode) {
+    room.settings.promptDuration = 30;
+    room.settings.voteDuration = 20;
+  }
+
+  room.updatedAt = Date.now();
+  await saveRoom(room);
+  return room;
+}
+
+export async function addCustomPrompt(code: string, playerId: string, prompt: string) {
+  const room = requireRoom(await getRoom(code), code);
+  ensureHost(room, playerId);
+
+  if (room.phase !== "lobby") {
+    throw new RoomError("Custom prompts can only be added in the lobby");
+  }
+
+  const sanitized = prompt.trim();
+  if (sanitized.length < 5) {
+    throw new RoomError("Prompt too short");
+  }
+  if (sanitized.length > 150) {
+    throw new RoomError("Prompt too long");
+  }
+
+  room.customPrompts.push(sanitized);
+  room.updatedAt = Date.now();
+  await saveRoom(room);
+  return room;
+}
+
+export async function clearCustomPrompts(code: string, playerId: string) {
+  const room = requireRoom(await getRoom(code), code);
+  ensureHost(room, playerId);
+
+  room.customPrompts = [];
   room.updatedAt = Date.now();
   await saveRoom(room);
   return room;
@@ -320,11 +446,30 @@ export async function getRoom(code: string) {
   if (kvEnabled) {
     const payload = await kv.get<RoomState>(roomKey(normalizedCode));
     if (!payload) return null;
-    return pruneStageMessage(payload);
+    return migrateRoom(pruneStageMessage(payload));
   }
 
   const room = memoryStore.get(normalizedCode) ?? null;
-  return room ? pruneStageMessage(room) : null;
+  return room ? migrateRoom(pruneStageMessage(room)) : null;
+}
+
+// Migrate old room format to new format
+function migrateRoom(room: RoomState): RoomState {
+  // Add settings if missing
+  if (!room.settings) {
+    room.settings = { ...DEFAULT_GAME_SETTINGS };
+  }
+  // Add customPrompts if missing
+  if (!room.customPrompts) {
+    room.customPrompts = [];
+  }
+  // Add player fields if missing
+  room.players = room.players.map((player) => ({
+    ...player,
+    streak: player.streak ?? 0,
+    achievements: player.achievements ?? [],
+  }));
+  return room;
 }
 
 async function saveRoom(room: RoomState) {
@@ -430,11 +575,61 @@ function finalizeRound(room: RoomState) {
   round.status = "closed";
   room.phase = "results";
 
+  // Find winner and update scores/streaks
+  let maxVotes = 0;
+  let winnerId: string | null = null;
+
   for (const submission of round.submissions) {
     const votes = submission.voters.length;
     const author = room.players.find((player) => player.id === submission.playerId);
     if (author && votes > 0) {
       author.score += votes * 100;
+      if (votes > maxVotes) {
+        maxVotes = votes;
+        winnerId = author.id;
+      }
+    }
+  }
+
+  // Update streaks and achievements
+  room.players.forEach((player) => {
+    if (player.id === winnerId) {
+      player.streak += 1;
+
+      // Award streak achievements
+      if (player.streak >= 3 && !player.achievements.includes("streak-3")) {
+        player.achievements.push("streak-3");
+      } else if (player.streak >= 2 && !player.achievements.includes("streak-2")) {
+        player.achievements.push("streak-2");
+      }
+
+      // Check for crowd favorite (most total votes across game)
+      if (!player.achievements.includes("crowd-favorite")) {
+        player.achievements.push("crowd-favorite");
+      }
+
+      // Check for unanimous (everyone voted for them)
+      const winningSubmission = round.submissions.find((s) => s.playerId === winnerId);
+      if (winningSubmission && winningSubmission.voters.length >= room.players.length - 1) {
+        if (!player.achievements.includes("unanimous")) {
+          player.achievements.push("unanimous");
+        }
+      }
+    } else {
+      // Reset streak for non-winners
+      player.streak = 0;
+    }
+  });
+
+  // Check for underdog (person in last place wins)
+  if (winnerId) {
+    const sorted = [...room.players].sort((a, b) => a.score - b.score);
+    const lastPlace = sorted[0];
+    if (lastPlace.id === winnerId && room.players.length > 2) {
+      const winner = room.players.find((p) => p.id === winnerId);
+      if (winner && !winner.achievements.includes("underdog")) {
+        winner.achievements.push("underdog");
+      }
     }
   }
 }
