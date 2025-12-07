@@ -8,8 +8,9 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name : "";
     const rounds =
       typeof body.rounds === "number" ? Number(body.rounds) : undefined;
+    const avatar = typeof body.avatar === "string" ? body.avatar : undefined;
 
-    const { room, player } = await createRoom(name, rounds);
+    const { room, player } = await createRoom(name, rounds, avatar);
     return NextResponse.json({ room, player });
   } catch (error) {
     return jsonError(error);

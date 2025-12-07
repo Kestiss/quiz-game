@@ -41,6 +41,38 @@ body {
   gap: 1.5rem;
 }
 
+.theme-neon {
+  --bg: #06091b;
+  --card: #101534;
+  --card-heavy: #161b3d;
+  --accent: #ff6ad5;
+  --accent-secondary: #5de0e6;
+}
+
+.theme-gold {
+  --bg: #120b04;
+  --card: #2a1b07;
+  --card-heavy: #3a260d;
+  --accent: #ffbe0b;
+  --accent-secondary: #ff9f1c;
+}
+
+.theme-retro {
+  --bg: #1d102b;
+  --card: #2c1c3f;
+  --card-heavy: #3a2353;
+  --accent: #ff62bc;
+  --accent-secondary: #8ef3ff;
+}
+
+.theme-spooky {
+  --bg: #050407;
+  --card: #18122b;
+  --card-heavy: #1f1b3a;
+  --accent: #ff6b6b;
+  --accent-secondary: #ffb347;
+}
+
 .hero {
   text-align: center;
 }
@@ -112,12 +144,14 @@ body {
 
 input,
 textarea,
+select,
 button {
   font: inherit;
 }
 
 input,
-textarea {
+textarea,
+select {
   padding: 0.75rem;
   border-radius: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -304,6 +338,22 @@ button:not(:disabled):hover {
   border-radius: 0.75rem;
 }
 
+.reaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.reaction-chip {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  font-size: 1.1rem;
+}
+
 .host-panel {
   margin-top: 1.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -342,6 +392,21 @@ button:not(:disabled):hover {
   align-items: center;
 }
 
+.host-teleprompter {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.host-teleprompter input,
+.host-actions select {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
 .status-row {
   display: flex;
   gap: 0.5rem;
@@ -359,6 +424,45 @@ button:not(:disabled):hover {
   font-size: 0.85rem;
 }
 
+.phase-vote .card.heavy,
+.phase-results .card.heavy,
+.phase-finished .card.heavy {
+  box-shadow: 0 0 40px rgba(255, 255, 255, 0.15);
+  transition: box-shadow 0.3s ease;
+}
+
+.phase-vote .card.heavy {
+  box-shadow: 0 0 40px rgba(255, 138, 0, 0.3);
+}
+
+.phase-results .card.heavy {
+  box-shadow: 0 0 40px rgba(93, 224, 230, 0.3);
+}
+
+.phase-finished .card.heavy {
+  box-shadow: 0 0 40px rgba(255, 106, 213, 0.35);
+}
+
+.stage-wrapper.phase-vote .stage-overlay {
+  animation: pulseLights 2s infinite;
+}
+
+.stage-wrapper.phase-results .stage-overlay {
+  animation: pulseLights 1.5s infinite;
+}
+
+@keyframes pulseLights {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
 .stage-wrapper {
   min-height: 100vh;
   background: radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent),
@@ -368,6 +472,24 @@ button:not(:disabled):hover {
   color: #f0f4ff;
   position: relative;
   overflow: hidden;
+}
+
+.stage-wrapper.theme-gold {
+  background: radial-gradient(circle at top, rgba(255, 206, 109, 0.3), transparent),
+    radial-gradient(circle at 20% 30%, rgba(255, 159, 28, 0.25), transparent),
+    #120b04;
+}
+
+.stage-wrapper.theme-retro {
+  background: radial-gradient(circle at top, rgba(255, 98, 188, 0.25), transparent),
+    radial-gradient(circle at 70% 20%, rgba(142, 243, 255, 0.25), transparent),
+    #1d102b;
+}
+
+.stage-wrapper.theme-spooky {
+  background: radial-gradient(circle at top, rgba(255, 107, 107, 0.2), transparent),
+    radial-gradient(circle at 10% 40%, rgba(255, 179, 71, 0.2), transparent),
+    #050407;
 }
 
 .stage-overlay {
@@ -565,6 +687,40 @@ button:not(:disabled):hover {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 500;
+}
+
+.stage-message-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.stage-message-overlay .bubble {
+  background: rgba(0, 0, 0, 0.75);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 1.25rem 2rem;
+  border-radius: 1rem;
+  font-size: clamp(1.2rem, 3vw, 2rem);
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.stage-reactions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.stage-reactions span {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.95rem;
 }
 
 @keyframes ticker {

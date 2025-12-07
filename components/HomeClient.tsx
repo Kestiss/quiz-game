@@ -10,7 +10,13 @@ import {
 } from "react";
 import useSWR from "swr";
 import { AnimatePresence, motion } from "framer-motion";
-import type { GamePhase, PublicRoomState, RoundState } from "@/types/game";
+import type {
+  GamePhase,
+  PublicRoomState,
+  ReactionEmoji,
+  RoundState,
+  ThemeName,
+} from "@/types/game";
 import { useSoundBoard } from "@/hooks/useSoundBoard";
 import { useSpeech } from "@/hooks/useSpeech";
 
@@ -26,6 +32,9 @@ type Session =
 const STORAGE_KEY = "party-quips-session";
 const SOUND_KEY = "party-quips-sound";
 const VOICE_KEY = "party-quips-voice";
+const REACTIONS: ReactionEmoji[] = ["👏", "😂", "🔥", "😮"];
+const THEMES: ThemeName[] = ["neon", "gold", "retro", "spooky"];
+const AVATARS = ["🎤", "🎭", "🤖", "🦄", "🛸", "🐙", "🧠", "🔥", "🎲", "🥳"];
 
 const fetcher = async (url: string): Promise<PublicRoomState> => {
   const response = await fetch(url, { cache: "no-store" });
@@ -60,11 +69,17 @@ export function HomeClient() {
   const [session, setSession] = useState<Session>(null);
   const [pendingMessage, setPendingMessage] = useState("");
   const [responseDraft, setResponseDraft] = useState("");
-  const [createForm, setCreateForm] = useState({ name: "", rounds: 3 });
-  const [joinForm, setJoinForm] = useState({ name: "", code: "" });
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    rounds: 3,
+    avatar: "🎤",
+  });
+  const [joinForm, setJoinForm] = useState({ name: "", code: "", avatar: "🎤" });
   const [formError, setFormError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [teleprompterText, setTeleprompterText] = useState("");
+  const [intermissionSeconds, setIntermissionSeconds] = useState(15);
 
   const hydrateSession = useEffectEvent((value: Session | null) => {
     setSession(value);
@@ -246,7 +261,11 @@ export function HomeClient() {
     try {
       const payload = await postAction({
         path: "/api/rooms",
-        payload: { name: createForm.name, rounds: createForm.rounds },
+        payload: {
+          name: createForm.name,
+          rounds: createForm.rounds,
+          avatar: createForm.avatar,
+        },
       });
       setSession({
         roomCode: payload.room.code,
@@ -254,7 +273,7 @@ export function HomeClient() {
         playerName: payload.player.name,
         isHost: true,
       });
-      setCreateForm({ name: "", rounds: createForm.rounds });
+      setCreateForm((prev) => ({ ...prev, name: "" }));
       setPendingMessage("");
       mutate();
       playJoin();
@@ -270,7 +289,7 @@ export function HomeClient() {
       const code = joinForm.code.trim().toUpperCase();
       const payload = await postAction({
         path: `/api/rooms/${code}/join`,
-        payload: { name: joinForm.name },
+        payload: { name: joinForm.name, avatar: joinForm.avatar },
       });
       setSession({
         roomCode: payload.room.code,
@@ -351,6 +370,70 @@ export function HomeClient() {
     }
   };
 
+  const updateTheme = async (theme: ThemeName) => {
+    if (!session || !room) return;
+    try {
+      await postAction({
+        path: `/api/rooms/${session.roomCode}/theme`,
+        payload: { playerId: session.playerId, theme },
+        mutate,
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Unable to change theme");
+    }
+  };
+
+  const sendTeleprompter = async () => {
+    if (!session || !room || teleprompterText.trim().length === 0) return;
+    try {
+      await postAction({
+        path: `/api/rooms/${session.roomCode}/stage-message`,
+        payload: {
+          playerId: session.playerId,
+          text: teleprompterText,
+          kind: "teleprompter",
+          durationMs: 10000,
+        },
+        mutate,
+      });
+      setTeleprompterText("");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Unable to send line");
+    }
+  };
+
+  const triggerIntermission = async () => {
+    if (!session || !room) return;
+    try {
+      await postAction({
+        path: `/api/rooms/${session.roomCode}/stage-message`,
+        payload: {
+          playerId: session.playerId,
+          text: "Intermission! Hang tight.",
+          kind: "intermission",
+          durationMs: intermissionSeconds * 1000,
+        },
+        mutate,
+      });
+      playSting();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Unable to start intermission");
+    }
+  };
+
+  const sendReaction = async (emoji: ReactionEmoji) => {
+    if (!session || !room) return;
+    try {
+      await postAction({
+        path: `/api/rooms/${session.roomCode}/react`,
+        payload: { reaction: emoji },
+        mutate,
+      });
+    } catch {
+      // ignore errors silently
+    }
+  };
+
   const hasSubmitted = session && currentRound
     ? answeredIds.has(session.playerId)
     : false;
@@ -364,8 +447,12 @@ export function HomeClient() {
     }
   }, [currentRound, speakPrompt]);
 
+  const themeClass = room ? `theme-${room.theme}` : "theme-neon";
+
+  const phaseClass = room ? `phase-${room.phase}` : "";
+
   return (
-    <div className="container">
+    <div className={`container ${themeClass} ${phaseClass}`}>
       <header className="hero">
         <h1>Party Prompts</h1>
         <p>Fast, lightweight Quiplash-style rounds you can host on Vercel.</p>
@@ -389,6 +476,21 @@ export function HomeClient() {
                   placeholder="Captain Chuckles"
                   required
                 />
+              </label>
+              <label>
+                Avatar
+                <select
+                  value={createForm.avatar}
+                  onChange={(event) =>
+                    setCreateForm((prev) => ({ ...prev, avatar: event.target.value }))
+                  }
+                >
+                  {AVATARS.map((avatar) => (
+                    <option key={avatar} value={avatar}>
+                      {avatar}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Rounds (1-5)
@@ -422,6 +524,21 @@ export function HomeClient() {
                   placeholder="Sassy Panda"
                   required
                 />
+              </label>
+              <label>
+                Avatar
+                <select
+                  value={joinForm.avatar}
+                  onChange={(event) =>
+                    setJoinForm((prev) => ({ ...prev, avatar: event.target.value }))
+                  }
+                >
+                  {AVATARS.map((avatar) => (
+                    <option key={avatar} value={avatar}>
+                      {avatar}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Room code
@@ -512,6 +629,7 @@ export function HomeClient() {
               </AnimatePresence>
               <motion.div layout transition={{ type: "spring", stiffness: 120, damping: 18 }}>
                 <Scoreboard room={room} answeredIds={answeredIds} votedIds={votedIds} />
+                <ReactionBar onReact={sendReaction} disabled={!session} />
               </motion.div>
               {session.isHost && (
                 <HostPanel
@@ -525,12 +643,44 @@ export function HomeClient() {
                   playApplause={playApplause}
                   playLaugh={playLaugh}
                   playSting={playSting}
+                  onThemeChange={updateTheme}
+                  teleprompterText={teleprompterText}
+                  setTeleprompterText={setTeleprompterText}
+                  onSendTeleprompter={sendTeleprompter}
+                  intermissionSeconds={intermissionSeconds}
+                  setIntermissionSeconds={setIntermissionSeconds}
+                  onStartIntermission={triggerIntermission}
                 />
               )}
             </>
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+function ReactionBar({
+  onReact,
+  disabled,
+}: {
+  onReact: (emoji: ReactionEmoji) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="reaction-bar">
+      <p className="muted small">React:</p>
+      {REACTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          className="reaction-chip"
+          onClick={() => onReact(emoji)}
+          disabled={disabled}
+        >
+          {emoji}
+        </button>
+      ))}
     </div>
   );
 }
@@ -760,7 +910,9 @@ function Scoreboard({
               transition={{ duration: 0.2 }}
             >
               <div>
-                <strong>{player.name}</strong>
+                <strong>
+                  <span aria-hidden="true">{player.avatar}</span> {player.name}
+                </strong>
                 {room.hostId === player.id && <span className="tag">Host</span>}
               </div>
               <div className="status-row">
@@ -791,6 +943,13 @@ function HostPanel({
   playApplause,
   playLaugh,
   playSting,
+  onThemeChange,
+  teleprompterText,
+  setTeleprompterText,
+  onSendTeleprompter,
+  intermissionSeconds,
+  setIntermissionSeconds,
+  onStartIntermission,
 }: {
   room: PublicRoomState;
   stagePath: string;
@@ -802,6 +961,13 @@ function HostPanel({
   playApplause: () => void;
   playLaugh: () => void;
   playSting: () => void;
+  onThemeChange: (theme: ThemeName) => void;
+  teleprompterText: string;
+  setTeleprompterText: (value: string) => void;
+  onSendTeleprompter: () => void;
+  intermissionSeconds: number;
+  setIntermissionSeconds: (value: number) => void;
+  onStartIntermission: () => void;
 }) {
   const [stageUrl, setStageUrl] = useState(stagePath);
   const [copied, setCopied] = useState(false);
@@ -844,6 +1010,22 @@ function HostPanel({
         </button>
       </div>
       <div className="host-actions">
+        <label className="muted small" htmlFor="theme-select">
+          Theme
+        </label>
+        <select
+          id="theme-select"
+          value={room.theme}
+          onChange={(event) => onThemeChange(event.target.value as ThemeName)}
+        >
+          {THEMES.map((theme) => (
+            <option key={theme} value={theme}>
+              {theme.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="host-actions">
         <button type="button" className="primary" onClick={onAdvance}>
           {room.phase === "vote" ? "Reveal results" : "Advance phase"}
         </button>
@@ -863,6 +1045,39 @@ function HostPanel({
         </button>
         <button type="button" className="secondary" onClick={playSting}>
           Drama sting
+        </button>
+      </div>
+      <div className="host-teleprompter">
+        <input
+          value={teleprompterText}
+          onChange={(event) => setTeleprompterText(event.target.value)}
+          placeholder="Drop a host line..."
+        />
+        <button
+          type="button"
+          className="secondary"
+          onClick={onSendTeleprompter}
+          disabled={teleprompterText.trim().length === 0}
+        >
+          Send cue
+        </button>
+      </div>
+      <div className="host-actions">
+        <label className="muted small">
+          Intermission length (seconds)
+          <input
+            type="number"
+            min={5}
+            max={60}
+            value={intermissionSeconds}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              setIntermissionSeconds(Number.isNaN(value) ? 15 : value);
+            }}
+          />
+        </label>
+        <button type="button" className="secondary" onClick={onStartIntermission}>
+          Start intermission
         </button>
       </div>
       <div className="host-actions">

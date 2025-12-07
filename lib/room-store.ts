@@ -4,8 +4,11 @@ import { pickPrompts } from "./prompts";
 import type {
   GamePhase,
   Player,
+  ReactionEmoji,
   RoomState,
   RoundState,
+  StageMessage,
+  ThemeName,
 } from "@/types/game";
 
 type GlobalRoomStore = typeof globalThis & {
@@ -16,6 +19,14 @@ const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const ROOM_TTL_SECONDS = 60 * 60 * 6;
 const DEFAULT_ROUNDS = 3;
 const MAX_RESPONSE_LENGTH = 160;
+const DEFAULT_THEME: ThemeName = "neon";
+const DEFAULT_REACTIONS: Record<ReactionEmoji, number> = {
+  "👏": 0,
+  "😂": 0,
+  "🔥": 0,
+  "😮": 0,
+};
+const AVATAR_CHOICES = ["🎤", "🎭", "🤖", "🦄", "🛸", "🐙", "🧠", "🔥", "🎲", "🥳"];
 
 const memoryStore = getMemoryStore();
 const kvEnabled =
@@ -30,11 +41,12 @@ export class RoomError extends Error {
   }
 }
 
-export async function createRoom(hostName: string, rounds?: number) {
+export async function createRoom(hostName: string, rounds?: number, avatar?: string) {
   const normalizedName = normalizeName(hostName);
   const hostId = randomUUID();
   const code = await generateRoomCode();
   const now = Date.now();
+  const hostAvatar = pickAvatar(avatar);
 
   const room: RoomState = {
     code,
@@ -49,18 +61,22 @@ export async function createRoom(hostName: string, rounds?: number) {
         score: 0,
         joinedAt: now,
         lastActionAt: now,
+        avatar: hostAvatar,
       },
     ],
     rounds: [],
     createdAt: now,
     updatedAt: now,
+    theme: DEFAULT_THEME,
+    reactions: { ...DEFAULT_REACTIONS },
+    stageMessage: null,
   };
 
   await saveRoom(room);
   return { room, player: room.players[0] };
 }
 
-export async function joinRoom(code: string, playerName: string) {
+export async function joinRoom(code: string, playerName: string, avatar?: string) {
   const normalizedCode = code.trim().toUpperCase();
   const room = requireRoom(await getRoom(normalizedCode), normalizedCode);
   if (room.phase !== "lobby") {
@@ -79,6 +95,7 @@ export async function joinRoom(code: string, playerName: string) {
     score: 0,
     joinedAt: now,
     lastActionAt: now,
+    avatar: pickAvatar(avatar),
   };
 
   room.players.push(player);
@@ -253,6 +270,45 @@ export async function advancePhase(code: string, playerId: string) {
   return room;
 }
 
+export async function setTheme(code: string, playerId: string, theme: ThemeName) {
+  const room = requireRoom(await getRoom(code), code);
+  ensureHost(room, playerId);
+  room.theme = validateTheme(theme);
+  room.updatedAt = Date.now();
+  await saveRoom(room);
+  return room;
+}
+
+export async function submitReaction(code: string, reaction: ReactionEmoji) {
+  const room = requireRoom(await getRoom(code), code);
+  if (!(reaction in room.reactions)) {
+    throw new RoomError("Unknown reaction", 400);
+  }
+  room.reactions[reaction] += 1;
+  room.updatedAt = Date.now();
+  await saveRoom(room);
+  return room.reactions;
+}
+
+export async function sendStageMessage(
+  code: string,
+  playerId: string,
+  message: Omit<StageMessage, "id" | "expiresAt"> & { durationMs?: number },
+) {
+  const room = requireRoom(await getRoom(code), code);
+  ensureHost(room, playerId);
+  const duration = message.durationMs ?? 10000;
+  room.stageMessage = {
+    id: randomUUID(),
+    kind: message.kind,
+    text: sanitizeResponse(message.text),
+    expiresAt: Date.now() + duration,
+  };
+  room.updatedAt = Date.now();
+  await saveRoom(room);
+  return room.stageMessage;
+}
+
 export async function getRoom(code: string) {
   const normalizedCode = code.trim().toUpperCase();
   if (!normalizedCode) {
@@ -262,10 +318,11 @@ export async function getRoom(code: string) {
   if (kvEnabled) {
     const payload = await kv.get<RoomState>(roomKey(normalizedCode));
     if (!payload) return null;
-    return payload;
+    return pruneStageMessage(payload);
   }
 
-  return memoryStore.get(normalizedCode) ?? null;
+  const room = memoryStore.get(normalizedCode) ?? null;
+  return room ? pruneStageMessage(room) : null;
 }
 
 async function saveRoom(room: RoomState) {
@@ -308,6 +365,26 @@ function sanitizeResponse(input: string) {
     return trimmed.slice(0, MAX_RESPONSE_LENGTH);
   }
   return trimmed;
+}
+
+function validateTheme(theme: ThemeName) {
+  const allowed: ThemeName[] = ["neon", "gold", "retro", "spooky"];
+  return allowed.includes(theme) ? theme : DEFAULT_THEME;
+}
+
+function pruneStageMessage(room: RoomState) {
+  if (room.stageMessage && room.stageMessage.expiresAt < Date.now()) {
+    room.stageMessage = null;
+  }
+  return room;
+}
+
+function pickAvatar(preferred?: string) {
+  if (preferred && preferred.length <= 3) {
+    return preferred;
+  }
+  const index = Math.floor(Math.random() * AVATAR_CHOICES.length);
+  return AVATAR_CHOICES[index];
 }
 
 function requireRoom(room: RoomState | null, code: string): RoomState {

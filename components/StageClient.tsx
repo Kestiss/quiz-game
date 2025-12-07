@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import confetti from "canvas-confetti";
 import { AnimatePresence, motion } from "framer-motion";
@@ -34,6 +34,12 @@ export function StageClient({ code }: StageClientProps) {
       : undefined;
 
   const celebrationRef = useRef<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
   useEffect(() => {
     if (!room) return;
     const signature = `${room.code}-${room.currentRoundIndex}-${room.phase}`;
@@ -72,9 +78,24 @@ export function StageClient({ code }: StageClientProps) {
     return [...room.players].sort((a, b) => b.score - a.score);
   }, [room]);
 
+  const activeStageMessage =
+    room?.stageMessage && room.stageMessage.expiresAt > now
+      ? room.stageMessage
+      : null;
+
   return (
-    <div className="stage-wrapper">
+    <div
+      className={`stage-wrapper theme-${room?.theme ?? "neon"} phase-${room?.phase ?? "lobby"}`}
+    >
       <div className="stage-overlay" />
+      {activeStageMessage && (
+        <div className="stage-message-overlay">
+          <div className="bubble">
+            {activeStageMessage.kind === "intermission" ? "⏱️ " : "🎙️ "}
+            {activeStageMessage.text}
+          </div>
+        </div>
+      )}
       <div className="stage-content">
         <header className="stage-header">
           <div>
@@ -114,13 +135,24 @@ export function StageClient({ code }: StageClientProps) {
                 {tickerNames.map((player, index) => (
                   <li key={player.id}>
                     <span className="rank">{index + 1}</span>
-                    <span className="name">{player.name}</span>
+                    <span className="name">
+                      <span aria-hidden="true">{player.avatar}</span> {player.name}
+                    </span>
                     <span className="points">{player.score} pts</span>
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="muted">Waiting for players...</p>
+            )}
+            {room && (
+              <div className="stage-reactions">
+                {Object.entries(room.reactions).map(([emoji, count]) => (
+                  <span key={emoji}>
+                    {emoji} {count}
+                  </span>
+                ))}
+              </div>
             )}
           </motion.div>
         </main>
@@ -178,7 +210,9 @@ function StagePhase({
           <div className="stage-grid">
             {room.players.map((player) => (
               <div key={player.id} className="stage-tile">
-                <p>{player.name}</p>
+                <p>
+                  <span aria-hidden="true">{player.avatar}</span> {player.name}
+                </p>
                 {room.hostId === player.id && <span className="tag">Host</span>}
               </div>
             ))}
@@ -233,6 +267,7 @@ function StagePhase({
               <h3>{winner.text}</h3>
               <p>
                 {winner.voters.length} vote{winner.voters.length === 1 ? "" : "s"} ·{" "}
+                {room.players.find((player) => player.id === winner.playerId)?.avatar}{" "}
                 {room.players.find((player) => player.id === winner.playerId)?.name}
               </p>
             </div>

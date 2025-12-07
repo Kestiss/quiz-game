@@ -6,6 +6,7 @@ export interface Player {
   score: number;
   joinedAt: number;
   lastActionAt: number;
+  avatar: string;
 }
 
 export interface Submission {
@@ -41,6 +42,19 @@ export interface RoomState {
   rounds: RoundState[];
   createdAt: number;
   updatedAt: number;
+  theme: ThemeName;
+  reactions: Record<ReactionEmoji, number>;
+  stageMessage?: StageMessage | null;
 }
 
 export type PublicRoomState = RoomState;
+
+export type ThemeName = "neon" | "gold" | "retro" | "spooky";
+export type ReactionEmoji = "👏" | "😂" | "🔥" | "😮";
+
+export interface StageMessage {
+  id: string;
+  kind: "teleprompter" | "intermission";
+  text: string;
+  expiresAt: number;
+}
