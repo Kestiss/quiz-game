@@ -167,8 +167,17 @@ export function HomeClient() {
     return new Set(currentRound.votes.map((item) => item.playerId));
   }, [currentRound]);
 
-  const { playJoin, playSubmit, playVote, playAdvance, playFanfare, playBuzzer } =
-    useSoundBoard(soundEnabled);
+  const {
+    playJoin,
+    playSubmit,
+    playVote,
+    playAdvance,
+    playFanfare,
+    playBuzzer,
+    playApplause,
+    playLaugh,
+    playSting,
+  } = useSoundBoard(soundEnabled);
   const { speak: speakPrompt, supported: speechSupported, cancel: cancelSpeech } =
     useSpeech(voiceEnabled);
 
@@ -177,9 +186,16 @@ export function HomeClient() {
     if (!room) return;
     if (lastPhaseRef.current && lastPhaseRef.current !== room.phase) {
       playAdvance();
+      if (room.phase === "results") {
+        playApplause();
+      } else if (room.phase === "finished") {
+        playFanfare();
+      } else if (room.phase === "vote") {
+        playSting();
+      }
     }
     lastPhaseRef.current = room.phase;
-  }, [room?.phase, room, playAdvance]);
+  }, [room?.phase, room, playAdvance, playApplause, playFanfare, playSting]);
 
   const lastPlayerCountRef = useRef(0);
   useEffect(() => {
@@ -506,6 +522,9 @@ export function HomeClient() {
                   canSpeakPrompt={canSpeakPrompt}
                   playFanfare={playFanfare}
                   playBuzzer={playBuzzer}
+                  playApplause={playApplause}
+                  playLaugh={playLaugh}
+                  playSting={playSting}
                 />
               )}
             </>
@@ -769,6 +788,9 @@ function HostPanel({
   canSpeakPrompt,
   playFanfare,
   playBuzzer,
+  playApplause,
+  playLaugh,
+  playSting,
 }: {
   room: PublicRoomState;
   stagePath: string;
@@ -777,6 +799,9 @@ function HostPanel({
   canSpeakPrompt: boolean;
   playFanfare: () => void;
   playBuzzer: () => void;
+  playApplause: () => void;
+  playLaugh: () => void;
+  playSting: () => void;
 }) {
   const [stageUrl, setStageUrl] = useState(stagePath);
   const [copied, setCopied] = useState(false);
@@ -827,6 +852,17 @@ function HostPanel({
         </button>
         <button type="button" className="secondary" onClick={playBuzzer}>
           Play buzzer
+        </button>
+      </div>
+      <div className="host-actions">
+        <button type="button" className="secondary" onClick={playApplause}>
+          Applause
+        </button>
+        <button type="button" className="secondary" onClick={playLaugh}>
+          Laugh track
+        </button>
+        <button type="button" className="secondary" onClick={playSting}>
+          Drama sting
         </button>
       </div>
       <div className="host-actions">

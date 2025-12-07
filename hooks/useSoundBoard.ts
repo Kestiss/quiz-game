@@ -9,6 +9,9 @@ interface SoundBoard {
   playAdvance: () => void;
   playFanfare: () => void;
   playBuzzer: () => void;
+  playApplause: () => void;
+  playLaugh: () => void;
+  playSting: () => void;
 }
 
 type OscOptions = {
@@ -89,5 +92,52 @@ export function useSoundBoard(enabled: boolean): SoundBoard {
     playChirp({ start: 500, end: 120, duration: 0.5, type: "sawtooth" });
   }, [playChirp]);
 
-  return { playJoin, playSubmit, playVote, playAdvance, playFanfare, playBuzzer };
+  const playNoise = useCallback(
+    (duration: number, volume = 0.2, delay = 0) => {
+      const ctx = getContext();
+      if (!ctx) return;
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = ctx.createGain();
+      const start = ctx.currentTime + delay;
+      gain.gain.setValueAtTime(volume, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      source.connect(gain).connect(ctx.destination);
+      source.start(start);
+    },
+    [getContext],
+  );
+
+  const playApplause = useCallback(() => {
+    playNoise(1.2, 0.25);
+    setTimeout(() => playNoise(0.9, 0.18), 150);
+  }, [playNoise]);
+
+  const playLaugh = useCallback(() => {
+    playNoise(0.5, 0.18);
+    setTimeout(() => playNoise(0.4, 0.15), 400);
+    setTimeout(() => playNoise(0.3, 0.12), 750);
+  }, [playNoise]);
+
+  const playSting = useCallback(() => {
+    playChirp({ start: 200, end: 800, duration: 0.4, type: "triangle" });
+    setTimeout(() => playChirp({ start: 800, end: 600, duration: 0.25, type: "square" }), 300);
+  }, [playChirp]);
+
+  return {
+    playJoin,
+    playSubmit,
+    playVote,
+    playAdvance,
+    playFanfare,
+    playBuzzer,
+    playApplause,
+    playLaugh,
+    playSting,
+  };
 }
