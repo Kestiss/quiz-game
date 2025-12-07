@@ -939,10 +939,9 @@ button:not(:disabled):hover {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-/* Main content area - constrained height */
+/* Main content area */
 .tv-main {
-  flex: 0 1 auto;
-  max-height: calc(100vh - 140px);
+  flex: 1;
   display: grid;
   grid-template-columns: 1fr 120px;
   gap: 0.2rem;
@@ -1055,13 +1054,12 @@ button:not(:disabled):hover {
   display: none;
 }
 
-/* Footer persona - prominent with guaranteed space */
+/* Footer persona - prominent */
 .tv-footer {
-  padding: 0.8rem 1.5rem;
+  padding: 0.6rem 1.5rem;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.9));
   border-top: 2px solid rgba(255, 255, 255, 0.3);
   flex-shrink: 0;
-  min-height: 60px;
 }
 
 .tv-persona {
