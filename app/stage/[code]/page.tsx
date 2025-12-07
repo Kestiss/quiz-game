@@ -1,10 +1,9 @@
-import { StageClient } from "@/components/StageClient";
+"use client";
 
-export default async function StagePage({
-  params,
-}: {
-  params: Promise<{ code: string }>;
-}) {
-  const { code } = await params;
-  return <StageClient code={code} />;
+import { StageClient } from "@/components/StageClient";
+import { useParams } from "next/navigation";
+
+export default function StageRoomPage() {
+  const params = useParams<{ code: string }>();
+  return params?.code ? <StageClient code={params.code} /> : null;
 }
