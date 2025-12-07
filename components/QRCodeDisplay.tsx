@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
 interface QRCodeDisplayProps {
@@ -14,15 +13,12 @@ export function QRCodeDisplay({ roomCode, size = 100 }: QRCodeDisplayProps) {
         : `/?code=${roomCode}`;
 
     return (
-        <div className="qr-code-wrapper">
-            <QRCodeSVG
-                value={joinUrl}
-                size={size}
-                bgColor="transparent"
-                fgColor="#ffffff"
-                level="M"
-            />
-            <p className="qr-label">Scan to join</p>
-        </div>
+        <QRCodeSVG
+            value={joinUrl}
+            size={size}
+            bgColor="transparent"
+            fgColor="#ffffff"
+            level="M"
+        />
     );
 }
