@@ -160,6 +160,16 @@ select {
   resize: none;
 }
 
+select {
+  appearance: none;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+select option {
+  color: #0a0a0a;
+  background: #f5f6ff;
+}
+
 button {
   border: none;
   border-radius: 999px;
