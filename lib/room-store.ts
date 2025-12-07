@@ -30,7 +30,9 @@ const AVATAR_CHOICES = ["🎤", "🎭", "🤖", "🦄", "🛸", "🐙", "🧠", 
 
 const memoryStore = getMemoryStore();
 const kvEnabled =
-  Boolean(process.env.KV_REST_API_URL) && Boolean(process.env.KV_REST_API_TOKEN);
+  Boolean(process.env.KV_REST_API_URL) ||
+  Boolean(process.env.KV_REST_API_TOKEN) ||
+  Boolean(process.env.REDIS_URL);
 
 export class RoomError extends Error {
   constructor(

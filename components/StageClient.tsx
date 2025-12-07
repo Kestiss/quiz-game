@@ -288,10 +288,7 @@ function StagePhase({
                 transition={{ duration: 0.35 }}
               >
                 <p>{submission.text}</p>
-                <span className="muted">
-                  {room.players.find((player) => player.id === submission.playerId)?.name ??
-                    "Mystery writer"}
-                </span>
+                <span className="muted">Anonymous writer</span>
               </motion.div>
             ))}
             {submissions.length === 0 && (
