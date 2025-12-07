@@ -983,11 +983,11 @@ button:not(:disabled):hover {
 }
 
 .tv-scoreboard h3 {
-  font-size: clamp(0.5rem, 0.8vw, 0.8rem);
+  font-size: clamp(0.6rem, 1vw, 1rem);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 0.3vh;
+  margin-bottom: 0.4vh;
   flex-shrink: 0;
 }
 
@@ -1005,11 +1005,11 @@ button:not(:disabled):hover {
 .tv-scoreboard li {
   display: flex;
   align-items: center;
-  gap: 0.2vw;
-  padding: 0.2vh 0.3vw;
+  gap: 0.3vw;
+  padding: 0.3vh 0.4vw;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 0.2rem;
-  font-size: clamp(0.5rem, 0.7vw, 0.75rem);
+  font-size: clamp(0.6rem, 0.9vw, 1rem);
 }
 
 .tv-scoreboard li.leader {
@@ -1024,7 +1024,7 @@ button:not(:disabled):hover {
 }
 
 .tv-avatar {
-  font-size: clamp(0.6rem, 0.9vw, 1rem);
+  font-size: clamp(0.8rem, 1.1vw, 1.3rem);
 }
 
 .tv-name {
