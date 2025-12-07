@@ -12,6 +12,7 @@ import useSWR from "swr";
 import { AnimatePresence, motion } from "framer-motion";
 import type { GamePhase, PublicRoomState, RoundState } from "@/types/game";
 import { useSoundBoard } from "@/hooks/useSoundBoard";
+import { useSpeech } from "@/hooks/useSpeech";
 
 type Session =
   | null
@@ -24,6 +25,7 @@ type Session =
 
 const STORAGE_KEY = "party-quips-session";
 const SOUND_KEY = "party-quips-sound";
+const VOICE_KEY = "party-quips-voice";
 
 const fetcher = async (url: string): Promise<PublicRoomState> => {
   const response = await fetch(url, { cache: "no-store" });
@@ -62,6 +64,7 @@ export function HomeClient() {
   const [joinForm, setJoinForm] = useState({ name: "", code: "" });
   const [formError, setFormError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   const hydrateSession = useEffectEvent((value: Session | null) => {
     setSession(value);
@@ -74,6 +77,9 @@ export function HomeClient() {
   const resetDraft = useEffectEvent(() => setResponseDraft(""));
   const applySoundSetting = useEffectEvent((value: boolean) => {
     setSoundEnabled(value);
+  });
+  const applyVoiceSetting = useEffectEvent((value: boolean) => {
+    setVoiceEnabled(value);
   });
 
   useEffect(() => {
@@ -98,6 +104,14 @@ export function HomeClient() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(VOICE_KEY);
+    if (saved) {
+      applyVoiceSetting(saved !== "off");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     if (session) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     } else {
@@ -109,6 +123,11 @@ export function HomeClient() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(SOUND_KEY, soundEnabled ? "on" : "off");
   }, [soundEnabled]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(VOICE_KEY, voiceEnabled ? "on" : "off");
+  }, [voiceEnabled]);
 
   const { data: room, error, mutate } = useSWR(
     session ? `/api/rooms/${session.roomCode}` : null,
@@ -149,6 +168,8 @@ export function HomeClient() {
   }, [currentRound]);
 
   const { playJoin, playSubmit, playVote, playAdvance } = useSoundBoard(soundEnabled);
+  const { speak: speakPrompt, supported: speechSupported, cancel: cancelSpeech } =
+    useSpeech(voiceEnabled);
 
   const lastPhaseRef = useRef<GamePhase | null>(null);
   useEffect(() => {
@@ -170,6 +191,37 @@ export function HomeClient() {
     }
     lastPlayerCountRef.current = room.players.length;
   }, [room?.players.length, room, playJoin]);
+
+  const lastSpokenPromptRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !room ||
+      room.phase !== "prompt" ||
+      !currentRound?.prompt ||
+      !voiceEnabled ||
+      !speechSupported
+    ) {
+      return;
+    }
+    if (lastSpokenPromptRef.current === currentRound.prompt) return;
+    speakPrompt(currentRound.prompt);
+    lastSpokenPromptRef.current = currentRound.prompt;
+  }, [
+    room?.phase,
+    currentRound?.prompt,
+    voiceEnabled,
+    speechSupported,
+    speakPrompt,
+    room,
+  ]);
+
+  useEffect(() => () => cancelSpeech(), [cancelSpeech]);
+
+  useEffect(() => {
+    if (room?.phase !== "prompt") {
+      lastSpokenPromptRef.current = null;
+    }
+  }, [room?.phase]);
 
   const handleCreateRoom = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -385,6 +437,18 @@ export function HomeClient() {
               >
                 {soundEnabled ? "Sound on" : "Sound off"}
               </button>
+              <button
+                type="button"
+                onClick={() => setVoiceEnabled((prev) => !prev)}
+                className={`secondary sound-toggle ${voiceEnabled ? "" : "off"}`}
+                disabled={!speechSupported}
+              >
+                {speechSupported
+                  ? voiceEnabled
+                    ? "Voice on"
+                    : "Voice off"
+                  : "Voice unavailable"}
+              </button>
               <button onClick={handleLeave} className="secondary danger">
                 Leave room
               </button>
@@ -415,6 +479,17 @@ export function HomeClient() {
                     onSubmitVote={submitVoteAction}
                     onStartGame={startGame}
                     onAdvance={advancePhaseAction}
+                    canSpeakPrompt={
+                      Boolean(currentRound?.prompt) &&
+                      speechSupported &&
+                      voiceEnabled
+                    }
+                    onSpeakPrompt={() => {
+                      if (currentRound?.prompt) {
+                        speakPrompt(currentRound.prompt);
+                      }
+                    }}
+                    speechSupported={speechSupported}
                   />
                 </motion.div>
               </AnimatePresence>
@@ -441,6 +516,9 @@ interface GamePhaseProps {
   onSubmitVote: (submissionId: string) => Promise<void>;
   onStartGame: () => Promise<void>;
   onAdvance: () => Promise<void>;
+  onSpeakPrompt: () => void;
+  canSpeakPrompt: boolean;
+  speechSupported: boolean;
 }
 
 function GamePhaseView({
@@ -455,6 +533,9 @@ function GamePhaseView({
   onSubmitVote,
   onStartGame,
   onAdvance,
+  onSpeakPrompt,
+  canSpeakPrompt,
+  speechSupported,
 }: GamePhaseProps) {
   switch (room.phase) {
     case "lobby":
@@ -479,6 +560,20 @@ function GamePhaseView({
         <div className="phase">
           <h2>Prompt #{(room.currentRoundIndex ?? 0) + 1}</h2>
           <p className="prompt">{currentRound?.prompt}</p>
+          {speechSupported ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={onSpeakPrompt}
+              disabled={!canSpeakPrompt}
+            >
+              🔊 Read this prompt aloud
+            </button>
+          ) : (
+            <p className="muted small">
+              Voice playback is not supported in this browser.
+            </p>
+          )}
           <p>
             Answers received: {currentRound?.submissions.length ?? 0} /{" "}
             {room.players.length}

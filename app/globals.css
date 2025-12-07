@@ -152,6 +152,13 @@ button:disabled {
   color: var(--text);
 }
 
+.ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  width: fit-content;
+}
+
 .secondary.danger {
   border-color: rgba(255, 131, 131, 0.6);
   color: #ffd6d6;
@@ -308,6 +315,10 @@ button:not(:disabled):hover {
 .muted {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.small {
+  font-size: 0.85rem;
 }
 
 @media (max-width: 600px) {
