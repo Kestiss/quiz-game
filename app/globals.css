@@ -524,6 +524,7 @@ button:not(:disabled):hover {
   border-radius: 1rem;
   padding: 1rem 1.5rem;
   backdrop-filter: blur(4px);
+  flex-wrap: wrap;
 }
 
 .persona-avatar {

@@ -6,6 +6,7 @@ import confetti from "canvas-confetti";
 import { AnimatePresence, motion } from "framer-motion";
 import type { PublicRoomState, RoundState } from "@/types/game";
 import { useSpeech } from "@/hooks/useSpeech";
+import { useBackgroundMusic } from "@/hooks/useBackgroundMusic";
 import { getPersonaLine, getPersonaMeta } from "@/lib/persona";
 
 const fetcher = async (url: string): Promise<PublicRoomState> => {
@@ -41,6 +42,7 @@ export function StageClient({ code }: StageClientProps) {
   const [personaLine, setPersonaLine] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const { speak: personaSpeak, supported: personaVoiceSupported } = useSpeech(voiceEnabled);
+  const stageMusic = useBackgroundMusic();
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -146,6 +148,13 @@ export function StageClient({ code }: StageClientProps) {
             <p className="eyebrow">{personaMeta.name}</p>
             <p className="persona-line">{personaLine}</p>
           </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={stageMusic.toggle}
+          >
+            {stageMusic.playing ? "Pause music" : "Play music"}
+          </button>
         </div>
 
         <main className="stage-main">

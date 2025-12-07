@@ -19,6 +19,7 @@ import type {
 } from "@/types/game";
 import { useSoundBoard } from "@/hooks/useSoundBoard";
 import { useSpeech } from "@/hooks/useSpeech";
+import { useBackgroundMusic } from "@/hooks/useBackgroundMusic";
 
 type Session =
   | null
@@ -195,6 +196,7 @@ export function HomeClient() {
   } = useSoundBoard(soundEnabled);
   const { speak: speakPrompt, supported: speechSupported, cancel: cancelSpeech } =
     useSpeech(voiceEnabled);
+  const bgm = useBackgroundMusic();
 
   const lastPhaseRef = useRef<GamePhase | null>(null);
   useEffect(() => {
@@ -650,6 +652,8 @@ export function HomeClient() {
                   intermissionSeconds={intermissionSeconds}
                   setIntermissionSeconds={setIntermissionSeconds}
                   onStartIntermission={triggerIntermission}
+                  musicPlaying={bgm.playing}
+                  onToggleMusic={bgm.toggle}
                 />
               )}
             </>
@@ -950,6 +954,8 @@ function HostPanel({
   intermissionSeconds,
   setIntermissionSeconds,
   onStartIntermission,
+  musicPlaying,
+  onToggleMusic,
 }: {
   room: PublicRoomState;
   stagePath: string;
@@ -968,6 +974,8 @@ function HostPanel({
   intermissionSeconds: number;
   setIntermissionSeconds: (value: number) => void;
   onStartIntermission: () => void;
+  musicPlaying: boolean;
+  onToggleMusic: () => void;
 }) {
   const [stageUrl, setStageUrl] = useState(stagePath);
   const [copied, setCopied] = useState(false);
@@ -1024,6 +1032,9 @@ function HostPanel({
             </option>
           ))}
         </select>
+        <button type="button" className="secondary" onClick={onToggleMusic}>
+          {musicPlaying ? "Pause background music" : "Play background music"}
+        </button>
       </div>
       <div className="host-actions">
         <button type="button" className="primary" onClick={onAdvance}>
