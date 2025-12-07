@@ -167,7 +167,8 @@ export function HomeClient() {
     return new Set(currentRound.votes.map((item) => item.playerId));
   }, [currentRound]);
 
-  const { playJoin, playSubmit, playVote, playAdvance } = useSoundBoard(soundEnabled);
+  const { playJoin, playSubmit, playVote, playAdvance, playFanfare, playBuzzer } =
+    useSoundBoard(soundEnabled);
   const { speak: speakPrompt, supported: speechSupported, cancel: cancelSpeech } =
     useSpeech(voiceEnabled);
 
@@ -338,6 +339,14 @@ export function HomeClient() {
     ? answeredIds.has(session.playerId)
     : false;
   const hasVoted = session && currentRound ? votedIds.has(session.playerId) : false;
+  const canSpeakPrompt =
+    Boolean(currentRound?.prompt) && speechSupported && voiceEnabled;
+
+  const speakCurrentPrompt = useCallback(() => {
+    if (currentRound?.prompt) {
+      speakPrompt(currentRound.prompt);
+    }
+  }, [currentRound, speakPrompt]);
 
   return (
     <div className="container">
@@ -479,16 +488,8 @@ export function HomeClient() {
                     onSubmitVote={submitVoteAction}
                     onStartGame={startGame}
                     onAdvance={advancePhaseAction}
-                    canSpeakPrompt={
-                      Boolean(currentRound?.prompt) &&
-                      speechSupported &&
-                      voiceEnabled
-                    }
-                    onSpeakPrompt={() => {
-                      if (currentRound?.prompt) {
-                        speakPrompt(currentRound.prompt);
-                      }
-                    }}
+                    canSpeakPrompt={canSpeakPrompt}
+                    onSpeakPrompt={speakCurrentPrompt}
                     speechSupported={speechSupported}
                   />
                 </motion.div>
@@ -496,6 +497,17 @@ export function HomeClient() {
               <motion.div layout transition={{ type: "spring", stiffness: 120, damping: 18 }}>
                 <Scoreboard room={room} answeredIds={answeredIds} votedIds={votedIds} />
               </motion.div>
+              {session.isHost && (
+                <HostPanel
+                  room={room}
+                  stagePath={`/stage/${session.roomCode}`}
+                  onAdvance={advancePhaseAction}
+                  onSpeakPrompt={speakCurrentPrompt}
+                  canSpeakPrompt={canSpeakPrompt}
+                  playFanfare={playFanfare}
+                  playBuzzer={playBuzzer}
+                />
+              )}
             </>
           )}
         </section>
@@ -745,6 +757,91 @@ function Scoreboard({
           ))}
         </AnimatePresence>
       </motion.ul>
+    </div>
+  );
+}
+
+function HostPanel({
+  room,
+  stagePath,
+  onAdvance,
+  onSpeakPrompt,
+  canSpeakPrompt,
+  playFanfare,
+  playBuzzer,
+}: {
+  room: PublicRoomState;
+  stagePath: string;
+  onAdvance: () => Promise<void>;
+  onSpeakPrompt: () => void;
+  canSpeakPrompt: boolean;
+  playFanfare: () => void;
+  playBuzzer: () => void;
+}) {
+  const [stageUrl, setStageUrl] = useState(stagePath);
+  const [copied, setCopied] = useState(false);
+  const updateStageUrl = useEffectEvent((value: string) => {
+    setStageUrl(value);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    updateStageUrl(new URL(stagePath, window.location.origin).toString());
+  }, [stagePath]);
+
+  const copyLink = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(stageUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="host-panel">
+      <div className="host-panel-header">
+        <div>
+          <p className="eyebrow">Host control room</p>
+          <h3>Keep the show moving</h3>
+        </div>
+        <span className="tag">Live</span>
+      </div>
+      <p className="muted small">
+        Open the presenter view on a big screen for everyone to watch.
+      </p>
+      <div className="host-stage-link">
+        <code>{stageUrl}</code>
+        <button type="button" className="secondary" onClick={copyLink}>
+          {copied ? "Copied!" : "Copy link"}
+        </button>
+      </div>
+      <div className="host-actions">
+        <button type="button" className="primary" onClick={onAdvance}>
+          {room.phase === "vote" ? "Reveal results" : "Advance phase"}
+        </button>
+        <button type="button" className="secondary" onClick={playFanfare}>
+          Play fanfare
+        </button>
+        <button type="button" className="secondary" onClick={playBuzzer}>
+          Play buzzer
+        </button>
+      </div>
+      <div className="host-actions">
+        <button
+          type="button"
+          className="ghost"
+          onClick={onSpeakPrompt}
+          disabled={!canSpeakPrompt}
+        >
+          🔊 Read current prompt
+        </button>
+        <p className="muted small">
+          Stage view mirrors the players&apos; progress in real time.
+        </p>
+      </div>
     </div>
   );
 }

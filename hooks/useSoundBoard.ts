@@ -7,6 +7,8 @@ interface SoundBoard {
   playSubmit: () => void;
   playVote: () => void;
   playAdvance: () => void;
+  playFanfare: () => void;
+  playBuzzer: () => void;
 }
 
 type OscOptions = {
@@ -77,5 +79,15 @@ export function useSoundBoard(enabled: boolean): SoundBoard {
     playChirp({ start: 300, end: 700, duration: 0.4, type: "triangle" });
   }, [playChirp]);
 
-  return { playJoin, playSubmit, playVote, playAdvance };
+  const playFanfare = useCallback(() => {
+    playChirp({ start: 500, end: 900, duration: 0.35, type: "triangle" });
+    setTimeout(() => playChirp({ start: 450, end: 800, duration: 0.35, type: "square" }), 180);
+    setTimeout(() => playChirp({ start: 300, end: 600, duration: 0.5, type: "sine" }), 360);
+  }, [playChirp]);
+
+  const playBuzzer = useCallback(() => {
+    playChirp({ start: 500, end: 120, duration: 0.5, type: "sawtooth" });
+  }, [playChirp]);
+
+  return { playJoin, playSubmit, playVote, playAdvance, playFanfare, playBuzzer };
 }
