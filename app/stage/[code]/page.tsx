@@ -1,5 +1,10 @@
 import { StageClient } from "@/components/StageClient";
 
-export default function StagePage({ params }: { params: { code: string } }) {
-  return <StageClient code={params.code} />;
+export default async function StagePage({
+  params,
+}: {
+  params: Promise<{ code: string }>;
+}) {
+  const { code } = await params;
+  return <StageClient code={code} />;
 }
