@@ -515,6 +515,25 @@ button:not(:disabled):hover {
   gap: 2rem;
 }
 
+.persona-panel {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1rem;
+  padding: 1rem 1.5rem;
+  backdrop-filter: blur(4px);
+}
+
+.persona-avatar {
+  font-size: 2.5rem;
+}
+
+.persona-line {
+  font-size: 1.1rem;
+}
+
 .stage-header {
   display: flex;
   justify-content: space-between;

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import confetti from "canvas-confetti";
 import { AnimatePresence, motion } from "framer-motion";
 import type { PublicRoomState, RoundState } from "@/types/game";
+import { useSpeech } from "@/hooks/useSpeech";
+import { getPersonaLine, getPersonaMeta } from "@/lib/persona";
 
 const fetcher = async (url: string): Promise<PublicRoomState> => {
   const response = await fetch(url, { cache: "no-store" });
@@ -21,6 +23,7 @@ interface StageClientProps {
 
 export function StageClient({ code }: StageClientProps) {
   const upperCode = code.toUpperCase();
+  const personaMeta = getPersonaMeta();
   const { data: room, error } = useSWR(
     `/api/rooms/${upperCode}`,
     fetcher,
@@ -35,6 +38,9 @@ export function StageClient({ code }: StageClientProps) {
 
   const celebrationRef = useRef<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [personaLine, setPersonaLine] = useState("");
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const { speak: personaSpeak, supported: personaVoiceSupported } = useSpeech(voiceEnabled);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -54,6 +60,17 @@ export function StageClient({ code }: StageClientProps) {
       celebrationRef.current = null;
     }
   }, [room]);
+
+  const applyPersonaLine = useEffectEvent((line: string) => setPersonaLine(line));
+
+  useEffect(() => {
+    if (!room) return;
+    const line = getPersonaLine(room, currentRound);
+    applyPersonaLine(line);
+    if (voiceEnabled) {
+      personaSpeak(line);
+    }
+  }, [room?.phase, room?.currentRoundIndex, currentRound, personaSpeak, room, voiceEnabled]);
 
   const headline = (() => {
     if (!room) return "Awaiting players...";
@@ -111,8 +128,25 @@ export function StageClient({ code }: StageClientProps) {
             <p className="eyebrow">Room Code</p>
             <p className="stage-code">{upperCode}</p>
             <p className="muted small">Join on your phone and watch here.</p>
+            {personaVoiceSupported && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setVoiceEnabled((prev) => !prev)}
+              >
+                {voiceEnabled ? "Mute host" : "Unmute host"}
+              </button>
+            )}
           </div>
         </header>
+
+        <div className="persona-panel">
+          <div className="persona-avatar">{personaMeta.avatar}</div>
+          <div>
+            <p className="eyebrow">{personaMeta.name}</p>
+            <p className="persona-line">{personaLine}</p>
+          </div>
+        </div>
 
         <main className="stage-main">
           <AnimatePresence mode="wait">
@@ -237,13 +271,19 @@ function StagePhase({
           <p className="eyebrow">Studio Vote</p>
           <div className="stage-versus">
             {submissions.map((submission) => (
-              <div key={submission.id} className="stage-answer">
+              <motion.div
+                key={submission.id}
+                className="stage-answer"
+                initial={{ opacity: 0, y: 30, rotate: -2 }}
+                animate={{ opacity: 1, y: 0, rotate: 0 }}
+                transition={{ duration: 0.35 }}
+              >
                 <p>{submission.text}</p>
                 <span className="muted">
                   {room.players.find((player) => player.id === submission.playerId)?.name ??
                     "Mystery writer"}
                 </span>
-              </div>
+              </motion.div>
             ))}
             {submissions.length === 0 && (
               <p className="muted">No answers yet. Host may skip ahead.</p>
@@ -261,7 +301,12 @@ function StagePhase({
         <div className="stage-phase">
           <p className="eyebrow">Result Reveal</p>
           {winner ? (
-            <div className="stage-winner">
+            <motion.div
+              className="stage-winner"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4 }}
+            >
               <p className="muted">Winning prompt:</p>
               <h2>{currentRound?.prompt}</h2>
               <h3>{winner.text}</h3>
@@ -270,7 +315,7 @@ function StagePhase({
                 {room.players.find((player) => player.id === winner.playerId)?.avatar}{" "}
                 {room.players.find((player) => player.id === winner.playerId)?.name}
               </p>
-            </div>
+            </motion.div>
           ) : (
             <p>No submissions to score.</p>
           )}
