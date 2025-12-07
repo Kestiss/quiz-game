@@ -142,6 +142,18 @@ export function HomeClient() {
     }
   }, []);
 
+  // Read room code from URL query parameter (?code=XXXX)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const codeFromUrl = params.get("code");
+    if (codeFromUrl && !session) {
+      setJoinForm((prev) => ({ ...prev, code: codeFromUrl.toUpperCase() }));
+      // Clean up URL without reloading
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [session]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (session) {
