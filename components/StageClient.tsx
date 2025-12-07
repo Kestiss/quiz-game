@@ -178,8 +178,19 @@ export function StageClient({ code }: StageClientProps) {
             <span className="tv-code-label">JOIN:</span>
             <span className="tv-code">{upperCode}</span>
           </div>
-          <QRCodeDisplay roomCode={upperCode} size={60} />
+          <QRCodeDisplay roomCode={upperCode} size={45} />
         </div>
+
+        {/* Reactions in top bar */}
+        {room && (
+          <div className="tv-topbar-reactions">
+            {Object.entries(room.reactions).map(([emoji, count]) => (
+              <span key={emoji} className="tv-reaction">
+                {emoji}{count}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="tv-controls">
           {personaVoiceSupported && (
@@ -245,16 +256,6 @@ export function StageClient({ code }: StageClientProps) {
               <p className="tv-waiting">Waiting for players...</p>
             )}
           </div>
-
-          {room && (
-            <div className="tv-reactions">
-              {Object.entries(room.reactions).map(([emoji, count]) => (
-                <span key={emoji} className="tv-reaction">
-                  {emoji} {count}
-                </span>
-              ))}
-            </div>
-          )}
         </aside>
       </main>
 
