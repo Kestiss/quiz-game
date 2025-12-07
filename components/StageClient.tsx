@@ -178,7 +178,7 @@ export function StageClient({ code }: StageClientProps) {
             <span className="tv-code-label">JOIN:</span>
             <span className="tv-code">{upperCode}</span>
           </div>
-          <QRCodeDisplay roomCode={upperCode} size={45} />
+          <QRCodeDisplay roomCode={upperCode} size={55} />
         </div>
 
         {/* Reactions in top bar */}

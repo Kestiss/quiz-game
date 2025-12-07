@@ -8,21 +8,13 @@ interface QRCodeDisplayProps {
     size?: number;
 }
 
-export function QRCodeDisplay({ roomCode, size = 120 }: QRCodeDisplayProps) {
-    const [joinUrl, setJoinUrl] = useState("");
-
-    useEffect(() => {
-        if (typeof window !== "undefined") {
-            const url = new URL("/", window.location.origin);
-            url.searchParams.set("join", roomCode);
-            setJoinUrl(url.toString());
-        }
-    }, [roomCode]);
-
-    if (!joinUrl) return null;
+export function QRCodeDisplay({ roomCode, size = 100 }: QRCodeDisplayProps) {
+    const joinUrl = typeof window !== "undefined"
+        ? `${window.location.origin}?code=${roomCode}`
+        : `/?code=${roomCode}`;
 
     return (
-        <div className="qr-code-display">
+        <div className="qr-code-wrapper">
             <QRCodeSVG
                 value={joinUrl}
                 size={size}
