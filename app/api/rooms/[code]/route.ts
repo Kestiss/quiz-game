@@ -1,14 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getRoom } from "@/lib/room-store";
 import { jsonError } from "@/lib/api-helpers";
 
-interface Params {
-  params: { code: string };
-}
+type RouteContext = {
+  params: Promise<{ code: string }>;
+};
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(_: NextRequest, context: RouteContext) {
   try {
-    const room = await getRoom(params.code);
+    const { code } = await context.params;
+    const room = await getRoom(code);
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
     }
