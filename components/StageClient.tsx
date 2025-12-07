@@ -10,7 +10,6 @@ import { useBackgroundMusic } from "@/hooks/useBackgroundMusic";
 import { useSoundBoard } from "@/hooks/useSoundBoard";
 import { getPersonaLine, getPersonaMeta, getReactionComment } from "@/lib/persona";
 import { FloatingReactions } from "./FloatingReaction";
-import { CountdownTimer, TimerBar } from "./CountdownTimer";
 import { QRCodeDisplay } from "./QRCodeDisplay";
 
 const fetcher = async (url: string): Promise<PublicRoomState> => {
@@ -48,9 +47,8 @@ export function StageClient({ code }: StageClientProps) {
   const [revealedAnswers, setRevealedAnswers] = useState<string[]>([]);
   const { speak: personaSpeak, supported: personaVoiceSupported } = useSpeech(voiceEnabled);
   const stageMusic = useBackgroundMusic();
-  const { playDrumroll, playReveal, playWhoosh, playPop, playCheer, playTick, playUrgent } = useSoundBoard(true);
+  const { playCheer, playPop, playTick, playUrgent } = useSoundBoard(true);
 
-  // Track previous reactions for floating effect
   const prevReactionsRef = useRef<Record<ReactionEmoji, number> | null>(null);
 
   useEffect(() => {
@@ -74,11 +72,9 @@ export function StageClient({ code }: StageClientProps) {
     }
   }, [room, playCheer]);
 
-  // Handle dramatic reveal during vote phase
   useEffect(() => {
     if (room?.phase === "vote" && currentRound) {
       setRevealedAnswers([]);
-      // Reveal answers one by one with delays
       const submissions = currentRound.submissions;
       submissions.forEach((sub, index) => {
         setTimeout(() => {
@@ -89,14 +85,6 @@ export function StageClient({ code }: StageClientProps) {
     }
   }, [room?.phase, room?.currentRoundIndex, currentRound, playPop]);
 
-  // Play drumroll before results
-  useEffect(() => {
-    if (room?.phase === "vote") {
-      // Could trigger drumroll when host is about to reveal
-    }
-  }, [room?.phase]);
-
-  // Timer warning sounds
   useEffect(() => {
     if (!currentRound?.deadline) return;
     const remaining = Math.ceil((currentRound.deadline - now) / 1000);
@@ -118,7 +106,6 @@ export function StageClient({ code }: StageClientProps) {
     }
   }, [room?.phase, room?.currentRoundIndex, currentRound, personaSpeak, room, voiceEnabled]);
 
-  // React to reactions with persona comments
   useEffect(() => {
     if (!room || !prevReactionsRef.current) {
       prevReactionsRef.current = room?.reactions ?? null;
@@ -128,7 +115,6 @@ export function StageClient({ code }: StageClientProps) {
     const prev = prevReactionsRef.current;
     const current = room.reactions;
 
-    // Check if any reaction increased significantly
     (Object.keys(current) as ReactionEmoji[]).forEach((emoji) => {
       const diff = current[emoji] - (prev[emoji] || 0);
       if (diff >= 3) {
@@ -143,24 +129,6 @@ export function StageClient({ code }: StageClientProps) {
     prevReactionsRef.current = current;
   }, [room?.reactions, voiceEnabled, personaSpeak]);
 
-  const headline = (() => {
-    if (!room) return "Awaiting players...";
-    switch (room.phase) {
-      case "lobby":
-        return "Lobby is open";
-      case "prompt":
-        return "Writers' Room";
-      case "vote":
-        return "Studio Vote";
-      case "results":
-        return "Results Reveal";
-      case "finished":
-        return "Finale";
-      default:
-        return "On Air";
-    }
-  })();
-
   const tickerNames = useMemo(() => {
     if (!room) return [];
     return [...room.players].sort((a, b) => b.score - a.score);
@@ -171,160 +139,140 @@ export function StageClient({ code }: StageClientProps) {
       ? room.stageMessage
       : null;
 
-  return (
-    <div
-      className={`stage-wrapper theme-${room?.theme ?? "neon"} phase-${room?.phase ?? "lobby"}`}
-    >
-      <div className="stage-overlay" />
+  // Calculate timer progress
+  const timerProgress = currentRound?.deadline
+    ? Math.max(0, Math.min(100, ((currentRound.deadline - now) / (room?.settings?.promptDuration || 60) / 1000) * 100))
+    : 100;
+  const timerSeconds = currentRound?.deadline
+    ? Math.max(0, Math.ceil((currentRound.deadline - now) / 1000))
+    : 0;
+  const isUrgent = timerSeconds <= 10 && timerSeconds > 0;
 
+  return (
+    <div className={`tv-stage theme-${room?.theme ?? "neon"}`}>
       {/* Floating reactions */}
       {room && <FloatingReactions reactions={room.reactions} />}
 
       {activeStageMessage && (
-        <div className="stage-message-overlay">
-          <div className="bubble">
+        <div className="tv-message-overlay">
+          <div className="tv-message-bubble">
             {activeStageMessage.kind === "intermission" ? "⏱️ " : "🎙️ "}
             {activeStageMessage.text}
           </div>
         </div>
       )}
-      <div className="stage-content">
-        <header className="stage-header">
-          <div>
-            <p className="eyebrow">Showtime</p>
-            <h1>{headline}</h1>
-            <p className="stage-subline">
-              {room
-                ? `Round ${Math.max(1, room.currentRoundIndex + 1)} of ${room.roundsToPlay}`
-                : "Connecting to studio..."}
-            </p>
-          </div>
-          <div className="stage-code-card">
-            <p className="eyebrow">Room Code</p>
-            <p className="stage-code">{upperCode}</p>
-            <QRCodeDisplay roomCode={upperCode} size={80} />
-            {personaVoiceSupported && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setVoiceEnabled((prev) => !prev)}
-              >
-                {voiceEnabled ? "Mute host" : "Unmute host"}
-              </button>
-            )}
-          </div>
-        </header>
 
-        <div className="persona-panel">
-          <motion.div
-            className="persona-avatar"
-            animate={room?.phase === "results" ? { scale: [1, 1.2, 1] } : {}}
-            transition={{ repeat: Infinity, duration: 2 }}
-          >
-            {personaMeta.avatar}
-          </motion.div>
-          <div>
-            <p className="eyebrow">{personaMeta.name}</p>
-            <p className="persona-line">{personaLine}</p>
-          </div>
-          <button
-            type="button"
-            className="secondary"
-            onClick={stageMusic.toggle}
-          >
-            {stageMusic.playing ? "Pause music" : "Play music"}
-          </button>
+      {/* Top bar - Room code, round info, controls */}
+      <header className="tv-topbar">
+        <div className="tv-brand">
+          <span className="tv-logo">🎙️</span>
+          <span className="tv-title">Party Prompts</span>
         </div>
 
-        {/* Timer bar for prompt/vote phases */}
-        {currentRound?.deadline && (room?.phase === "prompt" || room?.phase === "vote") && (
-          <TimerBar deadline={currentRound.deadline} warningThreshold={10} />
-        )}
+        <div className="tv-round-info">
+          {room && `Round ${Math.max(1, room.currentRoundIndex + 1)} of ${room.roundsToPlay}`}
+        </div>
 
-        <main className="stage-main">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`${room?.phase ?? "loading"}-${room?.currentRoundIndex ?? -1}`}
-              initial={{ opacity: 0, y: 25, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -25, scale: 0.98 }}
-              transition={{ duration: 0.35 }}
-              className="stage-panel"
-            >
-              <StagePhase
-                room={room}
-                currentRound={currentRound}
-                error={error}
-                revealedAnswers={revealedAnswers}
-              />
-            </motion.div>
-          </AnimatePresence>
+        <div className="tv-join-section">
+          <div className="tv-code-display">
+            <span className="tv-code-label">JOIN:</span>
+            <span className="tv-code">{upperCode}</span>
+          </div>
+          <QRCodeDisplay roomCode={upperCode} size={60} />
+        </div>
 
-          <motion.div layout className="stage-scoreboard">
-            <h3>Scoreboard</h3>
+        <div className="tv-controls">
+          {personaVoiceSupported && (
+            <button type="button" className="tv-btn" onClick={() => setVoiceEnabled((prev) => !prev)}>
+              {voiceEnabled ? "🔊" : "🔇"}
+            </button>
+          )}
+          <button type="button" className="tv-btn" onClick={stageMusic.toggle}>
+            {stageMusic.playing ? "🎵" : "🎵"}
+          </button>
+        </div>
+      </header>
+
+      {/* Timer bar */}
+      {currentRound?.deadline && (room?.phase === "prompt" || room?.phase === "vote") && (
+        <div className={`tv-timer-bar ${isUrgent ? "urgent" : ""}`}>
+          <div className="tv-timer-fill" style={{ width: `${timerProgress}%` }} />
+          <span className="tv-timer-text">{timerSeconds}s</span>
+        </div>
+      )}
+
+      {/* Main content area */}
+      <main className="tv-main">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`${room?.phase ?? "loading"}-${room?.currentRoundIndex ?? -1}`}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+            className="tv-content"
+          >
+            <TVPhase
+              room={room}
+              currentRound={currentRound}
+              error={error}
+              revealedAnswers={revealedAnswers}
+            />
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Scoreboard sidebar */}
+        <aside className="tv-sidebar">
+          <div className="tv-scoreboard">
+            <h3>🏆 Leaderboard</h3>
             {room ? (
               <ul>
-                {tickerNames.map((player, index) => (
+                {tickerNames.slice(0, 8).map((player, index) => (
                   <motion.li
                     key={player.id}
                     layout
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
+                    className={index === 0 ? "leader" : ""}
                   >
-                    <span className="rank">{index + 1}</span>
-                    <span className="name">
-                      <span aria-hidden="true" className={index === 0 && room.phase === "results" ? "winner-avatar" : ""}>
-                        {player.avatar}
-                      </span>{" "}
-                      {player.name}
-                      {player.streak >= 2 && (
-                        <span className="streak-badge">🔥 {player.streak}</span>
-                      )}
-                    </span>
-                    <span className="points">{player.score} pts</span>
+                    <span className="tv-rank">{index + 1}</span>
+                    <span className="tv-avatar">{player.avatar}</span>
+                    <span className="tv-name">{player.name}</span>
+                    {player.streak >= 2 && <span className="tv-streak">🔥{player.streak}</span>}
+                    <span className="tv-score">{player.score}</span>
                   </motion.li>
                 ))}
               </ul>
             ) : (
-              <p className="muted">Waiting for players...</p>
+              <p className="tv-waiting">Waiting for players...</p>
             )}
-            {room && (
-              <div className="stage-reactions">
-                {Object.entries(room.reactions).map(([emoji, count]) => (
-                  <motion.span
-                    key={emoji}
-                    animate={{ scale: [1, 1.1, 1] }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    {emoji} {count}
-                  </motion.span>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        </main>
-      </div>
+          </div>
 
-      <footer className="stage-ticker">
-        <div className="ticker-track">
-          {tickerNames.length === 0 ? (
-            <span>Party Prompts is live — waiting for contestants...</span>
-          ) : (
-            tickerNames.map((player) => (
-              <span key={player.id}>
-                {player.name.toUpperCase()} • {player.score} PTS
-                {player.streak >= 2 ? ` 🔥${player.streak}` : ""}
-              </span>
-            ))
+          {room && (
+            <div className="tv-reactions">
+              {Object.entries(room.reactions).map(([emoji, count]) => (
+                <span key={emoji} className="tv-reaction">
+                  {emoji} {count}
+                </span>
+              ))}
+            </div>
           )}
+        </aside>
+      </main>
+
+      {/* Host persona footer */}
+      <footer className="tv-footer">
+        <div className="tv-persona">
+          <span className="tv-persona-avatar">{personaMeta.avatar}</span>
+          <div className="tv-persona-content">
+            <span className="tv-persona-name">{personaMeta.name}</span>
+            <span className="tv-persona-line">{personaLine}</span>
+          </div>
         </div>
       </footer>
     </div>
   );
 }
 
-function StagePhase({
+function TVPhase({
   room,
   currentRound,
   error,
@@ -337,8 +285,8 @@ function StagePhase({
 }) {
   if (error) {
     return (
-      <div className="stage-phase">
-        <h2>Studio feed lost</h2>
+      <div className="tv-phase tv-error">
+        <h2>📡 Connection Lost</h2>
         <p>{error.message}</p>
       </div>
     );
@@ -346,9 +294,9 @@ function StagePhase({
 
   if (!room) {
     return (
-      <div className="stage-phase">
-        <h2>Syncing with control room…</h2>
-        <p>Waiting for the host to go live.</p>
+      <div className="tv-phase tv-loading">
+        <h2>🎬 Setting the Stage...</h2>
+        <p>Waiting for the show to begin</p>
       </div>
     );
   }
@@ -356,106 +304,83 @@ function StagePhase({
   switch (room.phase) {
     case "lobby":
       return (
-        <div className="stage-phase">
-          <p className="eyebrow">Contestants</p>
-          <div className="stage-grid">
+        <div className="tv-phase tv-lobby">
+          <h2>👋 Welcome to the Lobby!</h2>
+          <p className="tv-phase-subtitle">Scan the QR code or enter the room code to join</p>
+          <div className="tv-player-grid">
             <AnimatePresence>
               {room.players.map((player, index) => (
                 <motion.div
                   key={player.id}
-                  className="stage-tile"
-                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  className="tv-player-card"
+                  initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
                 >
-                  <p>
-                    <span aria-hidden="true">{player.avatar}</span> {player.name}
-                  </p>
-                  {room.hostId === player.id && <span className="tag">Host</span>}
+                  <span className="tv-player-avatar">{player.avatar}</span>
+                  <span className="tv-player-name">{player.name}</span>
+                  {room.hostId === player.id && <span className="tv-host-badge">HOST</span>}
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
-          <p className="muted">Share the room code above to join the lobby.</p>
+          <p className="tv-player-count">{room.players.length} player{room.players.length === 1 ? "" : "s"} ready</p>
         </div>
       );
+
     case "prompt":
       return (
-        <div className="stage-phase">
-          <p className="eyebrow">Tonight&rsquo;s prompt</p>
+        <div className="tv-phase tv-prompt">
+          <p className="tv-phase-label">✍️ THE PROMPT</p>
           <motion.h2
-            className="stage-prompt"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 200 }}
+            className="tv-prompt-text"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
           >
             {currentRound?.prompt}
           </motion.h2>
-
-          {/* Typing indicator */}
-          <div className="typing-indicator">
-            <span>{currentRound?.submissions.length || 0} of {room.players.length} writers typing</span>
-            <div className="typing-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+          <div className="tv-status">
+            <span className="tv-status-icon">📝</span>
+            <span>{currentRound?.submissions.length || 0} of {room.players.length} have answered</span>
           </div>
-
-          {/* Timer */}
-          {currentRound?.deadline && (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: "1rem" }}>
-              <CountdownTimer
-                deadline={currentRound.deadline}
-                size="large"
-                warningThreshold={10}
-              />
-            </div>
-          )}
         </div>
       );
+
     case "vote": {
       const submissions = currentRound?.submissions ?? [];
       return (
-        <div className="stage-phase">
-          <p className="eyebrow">Studio Vote</p>
-
-          {/* Vote progress */}
-          <div className="vote-progress">
-            <div className="vote-progress-bar">
-              <div
-                className="vote-progress-fill"
-                style={{ width: `${((currentRound?.votes.length || 0) / Math.max(1, room.players.length - 1)) * 100}%` }}
-              />
-            </div>
-            <span className="vote-progress-text">
-              {currentRound?.votes.length || 0}/{room.players.length - 1} votes
-            </span>
-          </div>
-
-          <div className="stage-versus">
+        <div className="tv-phase tv-vote">
+          <p className="tv-phase-label">🗳️ VOTE NOW</p>
+          <div className="tv-answers-grid">
             {submissions.map((submission, index) => (
               <AnimatePresence key={submission.id}>
                 {revealedAnswers.includes(submission.id) && (
                   <motion.div
-                    className="stage-answer answer-reveal"
-                    initial={{ opacity: 0, y: 30, rotateX: -15 }}
-                    animate={{ opacity: 1, y: 0, rotateX: 0 }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    className="tv-answer-card"
+                    initial={{ opacity: 0, rotateY: -90 }}
+                    animate={{ opacity: 1, rotateY: 0 }}
+                    transition={{ duration: 0.5, delay: index * 0.15 }}
                   >
-                    <p>{submission.text}</p>
-                    <span className="muted">Anonymous writer</span>
+                    <span className="tv-answer-letter">{String.fromCharCode(65 + index)}</span>
+                    <p className="tv-answer-text">{submission.text}</p>
                   </motion.div>
                 )}
               </AnimatePresence>
             ))}
-            {submissions.length === 0 && (
-              <p className="muted">No answers yet. Host may skip ahead.</p>
-            )}
+          </div>
+          <div className="tv-vote-progress">
+            <div className="tv-vote-bar">
+              <div
+                className="tv-vote-fill"
+                style={{ width: `${((currentRound?.votes.length || 0) / Math.max(1, room.players.length - 1)) * 100}%` }}
+              />
+            </div>
+            <span className="tv-vote-count">{currentRound?.votes.length || 0}/{room.players.length - 1} voted</span>
           </div>
         </div>
       );
     }
+
     case "results": {
       const sorted = [...(currentRound?.submissions ?? [])].sort(
         (a, b) => b.voters.length - a.voters.length,
@@ -464,72 +389,62 @@ function StagePhase({
       const winnerPlayer = room.players.find((p) => p.id === winner?.playerId);
 
       return (
-        <div className="stage-phase">
-          <p className="eyebrow">Result Reveal</p>
-          {winner ? (
+        <div className="tv-phase tv-results">
+          <p className="tv-phase-label">🎉 WINNER!</p>
+          {winner && (
             <motion.div
-              className="stage-winner"
-              initial={{ scale: 0.9, opacity: 0 }}
+              className="tv-winner-card"
+              initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4 }}
+              transition={{ type: "spring", stiffness: 200 }}
             >
-              <p className="muted">Winning prompt:</p>
-              <h2>{currentRound?.prompt}</h2>
-              <motion.h3
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                {winner.text}
-              </motion.h3>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-              >
-                <span className="winner-avatar">{winnerPlayer?.avatar}</span>{" "}
-                {winnerPlayer?.name} — {winner.voters.length} vote{winner.voters.length === 1 ? "" : "s"}
+              <div className="tv-winner-answer">{winner.text}</div>
+              <div className="tv-winner-author">
+                <span className="tv-winner-avatar">{winnerPlayer?.avatar}</span>
+                <span className="tv-winner-name">{winnerPlayer?.name}</span>
+                <span className="tv-winner-votes">{winner.voters.length} vote{winner.voters.length === 1 ? "" : "s"}</span>
                 {winnerPlayer?.streak && winnerPlayer.streak >= 2 && (
-                  <span className="streak-badge">🔥 {winnerPlayer.streak} streak!</span>
+                  <span className="tv-winner-streak">🔥 {winnerPlayer.streak} streak!</span>
                 )}
-              </motion.p>
+              </div>
             </motion.div>
-          ) : (
-            <p>No submissions to score.</p>
           )}
+          <p className="tv-prompt-reminder">Prompt: {currentRound?.prompt}</p>
         </div>
       );
     }
-    case "finished":
+
+    case "finished": {
+      const sortedPlayers = [...room.players].sort((a, b) => b.score - a.score);
       return (
-        <div className="stage-phase">
-          <p className="eyebrow">Season Finale</p>
-          <ol className="stage-podium">
-            {[...room.players]
-              .sort((a, b) => b.score - a.score)
-              .map((player, index) => (
-                <motion.li
-                  key={player.id}
-                  initial={{ opacity: 0, x: -30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.2 }}
-                >
-                  <span className="rank">
-                    {index === 0 ? "🏆" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
-                  </span>
-                  <span className={index === 0 ? "winner-avatar" : ""}>{player.avatar}</span>
-                  <span>{player.name}</span>
-                  <span>{player.score} pts</span>
-                </motion.li>
-              ))}
-          </ol>
-          <p className="muted">Host can reset the lobby to play again.</p>
+        <div className="tv-phase tv-finished">
+          <p className="tv-phase-label">🏆 FINAL STANDINGS</p>
+          <div className="tv-podium">
+            {sortedPlayers.slice(0, 3).map((player, index) => (
+              <motion.div
+                key={player.id}
+                className={`tv-podium-spot tv-podium-${index + 1}`}
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: (2 - index) * 0.3 }}
+              >
+                <span className="tv-podium-medal">
+                  {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                </span>
+                <span className="tv-podium-avatar">{player.avatar}</span>
+                <span className="tv-podium-name">{player.name}</span>
+                <span className="tv-podium-score">{player.score} pts</span>
+              </motion.div>
+            ))}
+          </div>
         </div>
       );
+    }
+
     default:
       return (
-        <div className="stage-phase">
-          <h2>Lights warming up…</h2>
+        <div className="tv-phase">
+          <h2>🎬 Coming Up Next...</h2>
         </div>
       );
   }
@@ -537,12 +452,13 @@ function StagePhase({
 
 function fireConfetti() {
   if (typeof window === "undefined") return;
-  const defaults = { origin: { y: 0.7 } };
-  void confetti({ ...defaults, particleCount: 80, spread: 70, startVelocity: 45 });
+  const colors = ["#ff6ad5", "#5de0e6", "#ffd700", "#ff6b6b"];
+
+  void confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors });
   setTimeout(() => {
-    void confetti({ ...defaults, particleCount: 60, spread: 100, startVelocity: 60 });
+    void confetti({ particleCount: 80, spread: 100, origin: { y: 0.5, x: 0.3 }, colors });
   }, 200);
   setTimeout(() => {
-    void confetti({ ...defaults, particleCount: 100, spread: 120, startVelocity: 50, colors: ["#ff6ad5", "#5de0e6", "#ffd700"] });
+    void confetti({ particleCount: 80, spread: 100, origin: { y: 0.5, x: 0.7 }, colors });
   }, 400);
 }
