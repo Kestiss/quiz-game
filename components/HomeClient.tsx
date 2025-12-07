@@ -5,10 +5,13 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import useSWR from "swr";
-import type { PublicRoomState, RoundState } from "@/types/game";
+import { AnimatePresence, motion } from "framer-motion";
+import type { GamePhase, PublicRoomState, RoundState } from "@/types/game";
+import { useSoundBoard } from "@/hooks/useSoundBoard";
 
 type Session =
   | null
@@ -20,6 +23,7 @@ type Session =
     };
 
 const STORAGE_KEY = "party-quips-session";
+const SOUND_KEY = "party-quips-sound";
 
 const fetcher = async (url: string): Promise<PublicRoomState> => {
   const response = await fetch(url, { cache: "no-store" });
@@ -57,6 +61,7 @@ export function HomeClient() {
   const [createForm, setCreateForm] = useState({ name: "", rounds: 3 });
   const [joinForm, setJoinForm] = useState({ name: "", code: "" });
   const [formError, setFormError] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   const hydrateSession = useEffectEvent((value: Session | null) => {
     setSession(value);
@@ -67,6 +72,9 @@ export function HomeClient() {
     setPendingMessage("Room expired. Create or join a new one.");
   });
   const resetDraft = useEffectEvent(() => setResponseDraft(""));
+  const applySoundSetting = useEffectEvent((value: boolean) => {
+    setSoundEnabled(value);
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -82,12 +90,25 @@ export function HomeClient() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(SOUND_KEY);
+    if (saved) {
+      applySoundSetting(saved !== "off");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     if (session) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     } else {
       window.localStorage.removeItem(STORAGE_KEY);
     }
   }, [session]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SOUND_KEY, soundEnabled ? "on" : "off");
+  }, [soundEnabled]);
 
   const { data: room, error, mutate } = useSWR(
     session ? `/api/rooms/${session.roomCode}` : null,
@@ -127,6 +148,29 @@ export function HomeClient() {
     return new Set(currentRound.votes.map((item) => item.playerId));
   }, [currentRound]);
 
+  const { playJoin, playSubmit, playVote, playAdvance } = useSoundBoard(soundEnabled);
+
+  const lastPhaseRef = useRef<GamePhase | null>(null);
+  useEffect(() => {
+    if (!room) return;
+    if (lastPhaseRef.current && lastPhaseRef.current !== room.phase) {
+      playAdvance();
+    }
+    lastPhaseRef.current = room.phase;
+  }, [room?.phase, room, playAdvance]);
+
+  const lastPlayerCountRef = useRef(0);
+  useEffect(() => {
+    if (!room) return;
+    if (
+      lastPlayerCountRef.current > 0 &&
+      room.players.length > lastPlayerCountRef.current
+    ) {
+      playJoin();
+    }
+    lastPlayerCountRef.current = room.players.length;
+  }, [room?.players.length, room, playJoin]);
+
   const handleCreateRoom = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
@@ -144,6 +188,7 @@ export function HomeClient() {
       setCreateForm({ name: "", rounds: createForm.rounds });
       setPendingMessage("");
       mutate();
+      playJoin();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to create room");
     }
@@ -166,6 +211,7 @@ export function HomeClient() {
       });
       setPendingMessage("");
       mutate();
+      playJoin();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to join room");
     }
@@ -186,10 +232,11 @@ export function HomeClient() {
         mutate,
       });
       setResponseDraft("");
+      playSubmit();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Unable to submit answer");
     }
-  }, [room, session, responseDraft, mutate]);
+  }, [room, session, responseDraft, mutate, playSubmit]);
 
   const submitVoteAction = async (submissionId: string) => {
     if (!session || !room) return;
@@ -199,6 +246,7 @@ export function HomeClient() {
         payload: { playerId: session.playerId, submissionId },
         mutate,
       });
+      playVote();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Unable to submit vote");
     }
@@ -228,6 +276,7 @@ export function HomeClient() {
         payload: { playerId: session.playerId },
         mutate,
       });
+      playAdvance();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Unable to advance");
     }
@@ -328,29 +377,50 @@ export function HomeClient() {
               <p>{session.playerName}</p>
               {session.isHost && <span className="tag">Host</span>}
             </div>
-            <button onClick={handleLeave} className="secondary">
-              Leave room
-            </button>
+            <div className="session-actions">
+              <button
+                type="button"
+                onClick={() => setSoundEnabled((prev) => !prev)}
+                className={`secondary sound-toggle ${soundEnabled ? "" : "off"}`}
+              >
+                {soundEnabled ? "Sound on" : "Sound off"}
+              </button>
+              <button onClick={handleLeave} className="secondary danger">
+                Leave room
+              </button>
+            </div>
           </div>
 
           {!room && !error && <p>Loading room...</p>}
 
           {room && (
             <>
-              <GamePhaseView
-                room={room}
-                session={session}
-                currentRound={currentRound}
-                hasSubmitted={hasSubmitted}
-                hasVoted={hasVoted}
-                responseDraft={responseDraft}
-                setResponseDraft={setResponseDraft}
-                onSubmitResponse={submitResponseAction}
-                onSubmitVote={submitVoteAction}
-                onStartGame={startGame}
-                onAdvance={advancePhaseAction}
-              />
-              <Scoreboard room={room} answeredIds={answeredIds} votedIds={votedIds} />
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`phase-${room.code}-${room.phase}-${room.currentRoundIndex ?? -1}`}
+                  initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.98 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <GamePhaseView
+                    room={room}
+                    session={session}
+                    currentRound={currentRound}
+                    hasSubmitted={hasSubmitted}
+                    hasVoted={hasVoted}
+                    responseDraft={responseDraft}
+                    setResponseDraft={setResponseDraft}
+                    onSubmitResponse={submitResponseAction}
+                    onSubmitVote={submitVoteAction}
+                    onStartGame={startGame}
+                    onAdvance={advancePhaseAction}
+                  />
+                </motion.div>
+              </AnimatePresence>
+              <motion.div layout transition={{ type: "spring", stiffness: 120, damping: 18 }}>
+                <Scoreboard room={room} answeredIds={answeredIds} votedIds={votedIds} />
+              </motion.div>
             </>
           )}
         </section>
@@ -552,25 +622,34 @@ function Scoreboard({
   return (
     <div className="scoreboard">
       <h3>Players</h3>
-      <ul>
-        {players.map((player) => (
-          <li key={player.id}>
-            <div>
-              <strong>{player.name}</strong>
-              {room.hostId === player.id && <span className="tag">Host</span>}
-            </div>
-            <div className="status-row">
-              <span>{player.score} pts</span>
-              {room.phase === "prompt" && answeredIds.has(player.id) && (
-                <span className="tag subtle">Answered</span>
-              )}
-              {room.phase === "vote" && votedIds.has(player.id) && (
-                <span className="tag subtle">Voted</span>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <motion.ul layout>
+        <AnimatePresence>
+          {players.map((player) => (
+            <motion.li
+              layout
+              key={player.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div>
+                <strong>{player.name}</strong>
+                {room.hostId === player.id && <span className="tag">Host</span>}
+              </div>
+              <div className="status-row">
+                <span>{player.score} pts</span>
+                {room.phase === "prompt" && answeredIds.has(player.id) && (
+                  <span className="tag subtle">Answered</span>
+                )}
+                {room.phase === "vote" && votedIds.has(player.id) && (
+                  <span className="tag subtle">Voted</span>
+                )}
+              </div>
+            </motion.li>
+          ))}
+        </AnimatePresence>
+      </motion.ul>
     </div>
   );
 }

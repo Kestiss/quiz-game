@@ -152,6 +152,15 @@ button:disabled {
   color: var(--text);
 }
 
+.secondary.danger {
+  border-color: rgba(255, 131, 131, 0.6);
+  color: #ffd6d6;
+}
+
+.secondary.sound-toggle.off {
+  opacity: 0.6;
+}
+
 button:not(:disabled):hover {
   transform: translateY(-1px);
 }
@@ -165,6 +174,13 @@ button:not(:disabled):hover {
   padding-bottom: 1rem;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
+}
+
+.session-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .eyebrow {
