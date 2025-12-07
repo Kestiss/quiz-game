@@ -14,12 +14,7 @@ interface SoundBoard {
   playSting: () => void;
 }
 
-type OscOptions = {
-  start: number;
-  end: number;
-  duration: number;
-  type?: OscillatorType;
-};
+const THEME_MASTER_GAIN = 0.2;
 
 export function useSoundBoard(enabled: boolean): SoundBoard {
   const contextRef = useRef<AudioContext | null>(null);
@@ -45,89 +40,134 @@ export function useSoundBoard(enabled: boolean): SoundBoard {
     [],
   );
 
-  const playChirp = useCallback(
-    (options: OscOptions) => {
+  const schedule = useCallback(
+    (fn: (ctx: AudioContext, baseTime: number) => void, delay = 0) => {
       const ctx = getContext();
       if (!ctx) return;
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = options.type ?? "sine";
-      osc.frequency.setValueAtTime(options.start, now);
-      osc.frequency.exponentialRampToValueAtTime(options.end, now + options.duration);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.08, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + options.duration);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + options.duration + 0.05);
+      const start = ctx.currentTime + delay;
+      fn(ctx, start);
     },
     [getContext],
   );
+
+  const tone = (
+    ctx: AudioContext,
+    start: number,
+    options: { duration: number; freq: number; type?: OscillatorType; gain?: number; glideTo?: number },
+  ) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = options.type ?? "sine";
+    osc.frequency.setValueAtTime(options.freq, start);
+    if (options.glideTo && options.glideTo > 0) {
+      osc.frequency.exponentialRampToValueAtTime(options.glideTo, start + options.duration);
+    }
+    const level = (options.gain ?? 1) * THEME_MASTER_GAIN;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(level, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + options.duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + options.duration + 0.05);
+  };
+
+  const noise = (
+    ctx: AudioContext,
+    start: number,
+    options: { duration: number; gain?: number },
+  ) => {
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * options.duration, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    const level = (options.gain ?? 1) * THEME_MASTER_GAIN;
+    gain.gain.setValueAtTime(level, start);
+    gain.gain.linearRampToValueAtTime(0.0001, start + options.duration);
+    source.connect(gain).connect(ctx.destination);
+    source.start(start);
+  };
 
   const playJoin = useCallback(() => {
-    playChirp({ start: 440, end: 880, duration: 0.35, type: "triangle" });
-  }, [playChirp]);
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.25, freq: 392, type: "triangle" });
+      tone(ctx, start + 0.18, { duration: 0.3, freq: 523.25, type: "triangle" });
+      tone(ctx, start + 0.36, { duration: 0.35, freq: 659.25, type: "triangle" });
+    });
+  }, [schedule]);
 
   const playSubmit = useCallback(() => {
-    playChirp({ start: 320, end: 640, duration: 0.3, type: "square" });
-  }, [playChirp]);
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.15, freq: 660, type: "square" });
+      tone(ctx, start + 0.1, { duration: 0.25, freq: 880, type: "square" });
+    });
+  }, [schedule]);
 
   const playVote = useCallback(() => {
-    playChirp({ start: 550, end: 990, duration: 0.2, type: "sawtooth" });
-    setTimeout(() => playChirp({ start: 660, end: 440, duration: 0.25 }), 160);
-  }, [playChirp]);
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.2, freq: 523.25, type: "sawtooth", gain: 0.9 });
+      tone(ctx, start + 0.15, { duration: 0.25, freq: 659.25, type: "triangle" });
+      tone(ctx, start + 0.3, { duration: 0.3, freq: 783.99, type: "triangle" });
+    });
+  }, [schedule]);
 
   const playAdvance = useCallback(() => {
-    playChirp({ start: 300, end: 700, duration: 0.4, type: "triangle" });
-  }, [playChirp]);
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.35, freq: 261.63, type: "triangle", glideTo: 392 });
+      tone(ctx, start, { duration: 0.35, freq: 329.63, type: "triangle", glideTo: 523.25 });
+    });
+  }, [schedule]);
 
   const playFanfare = useCallback(() => {
-    playChirp({ start: 500, end: 900, duration: 0.35, type: "triangle" });
-    setTimeout(() => playChirp({ start: 450, end: 800, duration: 0.35, type: "square" }), 180);
-    setTimeout(() => playChirp({ start: 300, end: 600, duration: 0.5, type: "sine" }), 360);
-  }, [playChirp]);
+    schedule((ctx, start) => {
+      const chord = [523.25, 659.25, 783.99];
+      chord.forEach((freq) => tone(ctx, start, { duration: 0.6, freq, type: "square", gain: 1 }));
+      chord.forEach((freq) =>
+        tone(ctx, start + 0.45, {
+          duration: 0.6,
+          freq: freq * 1.122,
+          type: "triangle",
+          gain: 0.8,
+        }),
+      );
+      tone(ctx, start + 0.9, { duration: 0.5, freq: 1046.5, type: "sine", gain: 1.2 });
+    });
+  }, [schedule]);
 
   const playBuzzer = useCallback(() => {
-    playChirp({ start: 500, end: 120, duration: 0.5, type: "sawtooth" });
-  }, [playChirp]);
-
-  const playNoise = useCallback(
-    (duration: number, volume = 0.2, delay = 0) => {
-      const ctx = getContext();
-      if (!ctx) return;
-      const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i += 1) {
-        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-      }
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      const gain = ctx.createGain();
-      const start = ctx.currentTime + delay;
-      gain.gain.setValueAtTime(volume, start);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      source.connect(gain).connect(ctx.destination);
-      source.start(start);
-    },
-    [getContext],
-  );
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.6, freq: 180, type: "sawtooth", glideTo: 80, gain: 1.2 });
+      noise(ctx, start, { duration: 0.4, gain: 0.4 });
+    });
+  }, [schedule]);
 
   const playApplause = useCallback(() => {
-    playNoise(1.2, 0.25);
-    setTimeout(() => playNoise(0.9, 0.18), 150);
-  }, [playNoise]);
+    schedule((ctx, start) => {
+      noise(ctx, start, { duration: 1.4, gain: 0.8 });
+      noise(ctx, start + 0.2, { duration: 1.1, gain: 0.6 });
+      noise(ctx, start + 0.5, { duration: 0.8, gain: 0.4 });
+    });
+  }, [schedule]);
 
   const playLaugh = useCallback(() => {
-    playNoise(0.5, 0.18);
-    setTimeout(() => playNoise(0.4, 0.15), 400);
-    setTimeout(() => playNoise(0.3, 0.12), 750);
-  }, [playNoise]);
+    schedule((ctx, start) => {
+      noise(ctx, start, { duration: 0.5, gain: 0.5 });
+      noise(ctx, start + 0.45, { duration: 0.4, gain: 0.35 });
+      tone(ctx, start + 0.2, { duration: 0.35, freq: 300, type: "triangle", gain: 0.6 });
+      tone(ctx, start + 0.5, { duration: 0.3, freq: 280, type: "triangle", gain: 0.5 });
+    });
+  }, [schedule]);
 
   const playSting = useCallback(() => {
-    playChirp({ start: 200, end: 800, duration: 0.4, type: "triangle" });
-    setTimeout(() => playChirp({ start: 800, end: 600, duration: 0.25, type: "square" }), 300);
-  }, [playChirp]);
+    schedule((ctx, start) => {
+      tone(ctx, start, { duration: 0.4, freq: 880, type: "triangle", gain: 0.8 });
+      tone(ctx, start + 0.25, { duration: 0.5, freq: 587, type: "sawtooth", gain: 0.9 });
+      noise(ctx, start + 0.1, { duration: 0.4, gain: 0.2 });
+    });
+  }, [schedule]);
 
   return {
     playJoin,
